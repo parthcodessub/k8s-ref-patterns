@@ -112,8 +112,35 @@ relabel_configs:
     regex: (.+)
 ```
 
+
 Key learning: if the `containerPort` is defined on the Pod spec, Kubernetes SD will populate `__address__` automatically (no need to manually build IP:port strings with regex).
 
+### C. Enterprise configuration (Exporters)
+
+In development you may use debug or file exporters to validate metrics flow. In an enterprise environment, configure an OTLP exporter (or vendor-specific exporter) to send metrics to a centralized observability backend. Keep credentials out of plain text — use Kubernetes `Secret`s or environment variables, and enable TLS for production endpoints.
+
+Example OTLP exporter configuration (replace values with your vendor settings):
+
+```yaml
+exporters:
+  otlp:
+    endpoint: "api.honeycomb.io:443" # replace with vendor endpoint
+    headers:
+      "x-honeycomb-team": "YOUR_API_KEY" # authentication header (use secrets)
+    tls:
+      insecure: false
+
+service:
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      processors: [batch]
+      exporters: [otlp]
+```
+
+This keeps the application decoupled from the backend: operations can change the destination by updating the Collector configuration without touching application code.
+
+---
 ---
 
 ## 3) Data flow (how it works)
@@ -130,9 +157,3 @@ Key learning: if the `containerPort` is defined on the Pod spec, Kubernetes SD w
 
 - **Separation of concerns**: Developers only need to expose metrics and add annotations; operations manages the Collector and export pipelines.
 - **Zero-touch scaling**: New services annotated for scraping are discovered automatically without updating Collector configs.
-
----
-
-If you'd like, I can:
-- add a full example `otel-config.yaml` that includes the prometheus receiver, service discovery, and exporters, or
-- add an example `ClusterRole` and `DaemonSet` manifest for quick deploy.
