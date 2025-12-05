@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metrics-app
+  template:
+    metadata:
+      labels:
+        app: metrics-app
+      # --- CRITICAL: Discovery Annotations ---
+      # annotations are for the sidecar proxy to find the main app's metrics endpoint
+      # These tell the Collector: "Scrape me on port 2112!"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2112"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: main-app
+          image: metrics-app:v1
+          # Important for local dev: verify K8s uses the loaded image
+          # This is a local image available on the node, not from a registry.
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 2112

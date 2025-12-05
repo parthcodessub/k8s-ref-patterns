@@ -1,0 +1,60 @@
+# -----------------------------
+# Git ignore for Go projects + GoLand/JetBrains IDEs
+# -----------------------------
+
+# macOS
+.DS_Store
+
+# Editor temporary files
+*~
+*.swp
+*.swo
+# backup files
+*.bak
+
+# Logs
+*.log
+
+# Environment files (contains secrets)
+.env
+.env.*
+
+# Go build outputs
+/bin/
+/build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+cover.out
+
+# Profiling / coverage
+*.prof
+
+# Dependency directories
+vendor/
+
+# GoLand / IntelliJ
+.idea/
+*.iml
+*.iws
+
+# VS Code (if present)
+.vscode/
+
+# OS-specific
+Thumbs.db
+
+# Go module cache / workspace files (do not ignore go.sum by default)
+# If you prefer to ignore IDE/workspace-specific go.work, you can uncomment
+# go.work
+#go.work
+
+# Temporary files created by various tools
+*.tmp
+
+# Ensure testdata directories are preserved (don't ignore `testdata/`)
+
