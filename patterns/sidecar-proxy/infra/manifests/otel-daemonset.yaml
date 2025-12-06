@@ -1,4 +1,9 @@
 apiVersion: v1
+# ServiceAccount: gives pods an identity within the cluster.
+# Pods using this ServiceAccount will present its identity to the API server
+# when performing actions that require RBAC authorization.
+# The DaemonSet below sets `serviceAccountName: otel-collector` so Collector pods
+# run with this identity.
 kind: ServiceAccount
 metadata:
   name: otel-collector
@@ -6,6 +11,11 @@ metadata:
 
 ---
 # 1. RBAC: Allow Collector to "scan" the cluster for pods
+# ClusterRole: defines the permissions the Collector needs to query cluster
+# state for service discovery. These permissions are intentionally narrow:
+# - `get`, `list`, `watch` on `pods` and `nodes` so the Collector can discover
+#   pod metadata (annotations, pod IPs) and node topology used by kubernetes_sd_configs.
+# Keep this role minimal (least-privilege) and avoid granting admin-level verbs.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -20,6 +30,10 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: otel-collector
+# ClusterRoleBinding: binds the ClusterRole (permissions) to a subject.
+# Here the subject is the `otel-collector` ServiceAccount in `default` namespace.
+# Once bound, any pod running with that ServiceAccount will be allowed the
+# permissions described in the ClusterRole when contacting the API server.
 subjects:
 - kind: ServiceAccount
   name: otel-collector
@@ -100,6 +114,11 @@ spec:
       labels:
         app: otel-collector
     spec:
+      # The DaemonSet's pods will use the `otel-collector` ServiceAccount above.
+      # This tells the kubelet to mount the service account token into the pod
+      # and allows the Collector process to authenticate to the API server
+      # using that identity. RBAC (ClusterRole + ClusterRoleBinding) controls
+      # what the Collector is allowed to do once authenticated.
       serviceAccountName: otel-collector
       containers:
         - name: otel-collector
