@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ambassador-demo
+  labels:
+    app: ambassador-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ambassador-demo
+  template:
+    metadata:
+      labels:
+        app: ambassador-demo
+    spec:
+      containers:
+        # 1. The Client Application
+        # It blindly calls localhost:8080
+        - name: client-app
+          image: client-app:v1
+          imagePullPolicy: Never
+          resources:
+            requests:
+              memory: "10Mi"
+              cpu: "10m"
+
+        # 2. The Ambassador Proxy
+        # It listens on 8080 and tunnels traffic to httpbin.org
+        - name: ambassador-proxy
+          image: ambassador-proxy:v1
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              memory: "20Mi"
+              cpu: "10m"
+
+---
+##Unit: Kubernetes measures CPU in "cores". 1 CPU = 1 full core (or vCPU). A suffix of m means milli-CPU (1/1000).
+# 100m = 0.1 CPU
+# 250m = 0.25 CPU
+# 500m = 0.5 CPU
+# 1000m or 1 = 1 CPU
+# Context in your file: under resources.requests or resources.limits:
+# requests.cpu is the amount the scheduler uses to reserve capacity for the pod. The scheduler places the pod only on a node that can satisfy its requests.
+# limits.cpu is the maximum CPU the container is allowed to use. If it tries to use more, the kernel will throttle the container (CPU throttling), not kill it.
+# Differences vs memory:
+# CPU is a compressible resource (excess usage is throttled).
+# Memory is not compressible — exceeding memory limit typically results in OOM kill.
