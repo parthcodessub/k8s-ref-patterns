@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adapter-pattern-demo
+  labels:
+    app: adapter-demo
+spec:
+  replicas: 1
+  # The Selector is CRITICAL in a Deployment. 
+  # It tells the ReplicaSet which pods it owns.
+  selector:
+    matchLabels:
+      app: adapter-demo
+  
+  # The Template defines the Pod that will be created
+  template:
+    metadata:
+      labels:
+        app: adapter-demo
+    spec:
+      # --- Lead Engineering Best Practice: Shared Volumes ---
+      # We use emptyDir so the volume exists as long as the Pod exists.
+      # If the Pod restarts on a new node, this data is lost (which is fine for ephemeral logs).
+      volumes:
+        - name: shared-logs
+          emptyDir: {}
+
+      containers:
+        # 1. Main Application (The Legacy App)
+        - name: legacy-app
+          image: legacy-app:v1
+          imagePullPolicy: Never
+          volumeMounts:
+            - name: shared-logs
+              mountPath: /var/log/app
+          # Lead Tip: Always define resources to avoid noisy neighbor issues
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+
+        # 2. Adapter Container (The Translator)
+        - name: adapter-sidecar
+          image: adapter-app:v1
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+              name: metrics
+          volumeMounts:
+            - name: shared-logs
+              mountPath: /var/log/app
+              readOnly: true # Security best practice: Sidecar shouldn't tamper with app logs
+          
+          # Lead Tip: Liveness probes ensure the adapter is actually working
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
