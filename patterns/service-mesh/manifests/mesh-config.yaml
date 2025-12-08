@@ -1,0 +1,19 @@
+# -------------------
+# The "Smart" Routing Logic
+# -------------------
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: echo-retry
+spec:
+  hosts:
+  - echo # Apply this rule to traffic destined for the "echo" service
+  http:
+  - route:
+    - destination:
+        host: echo
+    # MAGIC STARTS HERE
+    retries:
+      attempts: 3
+      perTryTimeout: 2s
+      retryOn: 5xx,connect-failure,refused-stream

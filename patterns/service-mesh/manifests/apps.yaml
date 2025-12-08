@@ -1,0 +1,74 @@
+# -------------------
+# 1. The "Echo" Service (Backend)
+# -------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo-v1
+  labels:
+    app: echo
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: echo
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: echo
+        version: v1
+    spec:
+      containers:
+      - name: echo
+        image: mesh-app:v1
+        imagePullPolicy: Never
+        env:
+        - name: MODE
+          value: "server"
+        ports:
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: echo
+spec:
+  selector:
+    app: echo
+  ports:
+  - port: 80
+    targetPort: 8080
+
+---
+# -------------------
+# 2. The "Caller" Service (Frontend)
+# -------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: caller
+  labels:
+    app: caller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: caller
+  template:
+    metadata:
+      labels:
+        app: caller
+    spec:
+      containers:
+      - name: caller
+        image: mesh-app:v1
+        imagePullPolicy: Never
+        env:
+        - name: MODE
+          value: "client"
+        - name: TARGET_URL
+          value: "http://echo" # Uses K8s DNS to find the service above
+        ports:
+        - containerPort: 8080
