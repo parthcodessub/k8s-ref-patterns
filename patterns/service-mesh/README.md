@@ -68,7 +68,74 @@ Service Mesh acts like a **Secure Armored Courier**.
 
 ---
 
-## 🧪 Practical Lab: Service Mesh "Hello World" (Istio)
+## 🍃 5. Evolution: Istio Ambient Mesh (Sidecar-less)
+
+**Ambient Mesh** is the new "Sidecar-less" data plane mode for Istio. It splits the Envoy proxy duties into two distinct layers:
+
+1.  **Ztunnel (Zero Trust Tunnel)**: A per-node agent (DaemonSet). It handles **Secure Transport (mTLS)** and TCP metrics. It replaces the sidecar for "Layer 4" tasks.
+2.  **Waypoint Proxy**: A per-namespace (or per-service) deployment. It handles **Layer 7 (HTTP)** features like Retries, Circuit Breaking, and Splitting. You only deploy this if you need L7 features.
+
+### Sidecar vs. Ambient
+
+| Feature | Classic Sidecar | Ambient Mesh |
+| :--- | :--- | :--- |
+| **Architecture** | 1 Envoy per Pod | 1 Ztunnel per Node + Optional Waypoint |
+| **Injection** | Required (Restart Pods) | **None** (Label Namespace only) |
+| **Resource Cost** | Linear (1000 Pods = 1000 Proxies) | **Fixed** (Nodes) + On-Demand (Waypoints) |
+| **Upgrade** | Restart all Apps | Upgrade Ztunnel/Waypoint (Apps stay running) |
+| **Adoption** | All-or-Nothing (L4 + L7) | **Incremental** (Start with mTLS, add L7 later) |
+
+### Configuration: How it looks
+
+In Ambient, your applications are untouched.
+
+**1. Enable the Mesh (No Restart):**
+```bash
+kubectl label namespace default istio.io/dataplane-mode=ambient
+```
+*Result: You instantly get mTLS and TCP Observability via Ztunnel.*
+
+**2. Enable L7 Features (The Waypoint):**
+To use Retries or Traffic Splitting, you must create a "Waypoint" for your namespace.
+
+```bash
+istioctl waypoint apply -n default
+```
+*Result: Creates a `Deployment` of Envoy to handle HTTP logic for this namespace.*
+
+**3. The Routing Rule (Same as before):**
+You still use `VirtualService`, but now it is enforced by the **Waypoint**, not a Sidecar.
+
+```yaml
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: productpage
+spec:
+  hosts:
+  - productpage
+  http:
+  - route:
+    - destination:
+        host: productpage
+        subset: v1
+```
+#### ⚠️ Note on Standards: HTTPRoute vs. VirtualService
+In recent versions, Istio is moving toward the standard Kubernetes **Gateway API**.
+
+| Feature | VirtualService (Istio Custom) | HTTPRoute (K8s Standard) |
+| :--- | :--- | :--- |
+| **Origin** | Created by Istio (2018). | Created by Kubernetes SIG-Network (2020). |
+| **Portability** | Works only with Istio. | Works with Istio, Linkerd, Cilium, Nginx, etc. |
+| **Syntax** | Powerful but complex regular expressions. | Cleaner, strictly typed matching. |
+| **Future** | Will be supported for years, but is "Legacy". | **The Future**. All new features target this API. |
+
+*Recommendation: If starting a fresh Ambient Mesh project today, prefer `HTTPRoute`.*
+
+
+---
+
+## 🧪 6. Practical Lab: Service Mesh "Hello World" (Istio)
 
 This lab demonstrates **Automatic Retries** using Istio.
 
