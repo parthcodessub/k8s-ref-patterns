@@ -513,6 +513,19 @@ It pushes the new routing table to all 1,000 running Envoy proxies via a long-li
 
 Result: Traffic shifts instantly. No Pod restarts required.
 
+#### Q&A: Understanding the Update Flow
+
+**Q: Will the update be only deployed on the Istio Control Plane?**
+**A:** **Yes, initially.** When you run `kubectl apply -f virtual-service.yaml`, you are only writing a configuration file to Kubernetes (stored in etcd). The Control Plane (`istiod`) watches for these changes.
+
+**Q: Will the sidecars running on each Pod fetch it?**
+**A:** **Clarification: They don't "fetch" (pull), they get "pushed" to.**
+The sidecars (Envoy) maintain a persistent, open connection (gRPC) to the Control Plane. When the Control Plane sees your new `VirtualService`, it calculates the new route table and **pushes** it down to every relevant sidecar instantly. This is why it feels "live" without you needing to restart the Pods. This protocol is called **xDS** (Discovery Service).
+
+**Q: Are the routing rules on the VirtualService?**
+**A:** **Yes.** The `VirtualService` is the primary place where you define **traffic routing rules** (e.g., retries, splits, timeouts).
+*Note: There is also `DestinationRule`, which defines policies applied to the traffic **after** routing (e.g., load balancing algorithms, connection pool settings).*
+
 Scenario B: Upgrading the Mesh Version (The "New TV")
 
 Action: You want to upgrade Istio from v1.18 to v1.19 (to get security patches for the Envoy binary itself).
