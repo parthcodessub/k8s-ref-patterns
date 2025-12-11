@@ -1,0 +1,69 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: my-test-cert
+  namespace: default
+spec:
+  # ============================================================================
+  # Output Configuration
+  # ============================================================================
+  # secretName: This is the critical link between the CRD (Intent) and Reality.
+  # The Cert-Manager operator will obtain the certificate and store the
+  # resulting tls.crt and tls.key in a standard Kubernetes Secret with this name.
+  # Your Pods will mount THIS Secret, not the Certificate object directly.
+  secretName: my-test-cert-tls
+
+  # ============================================================================
+  # Lifecycle Management
+  # ============================================================================
+  # duration: How long the certificate is valid for.
+  # defaults to 90 days usually, but being explicit is good practice.
+  duration: 2160h # 90 days
+
+  # renewBefore: The "Safety Buffer".
+  # Cert-Manager will automatically attempt to renew the certificate
+  # when we are within this window of expiration.
+  # This creates a "Self-Healing" mechanism for identity.
+  renewBefore: 360h # 15 days
+
+  # ============================================================================
+  # Identity Configuration
+  # ============================================================================
+  # commonName: The CN in the x509 certificate.
+  # e.g., the primary domain name this cert authenticates.
+  commonName: myapp.internal.com
+
+  # dnsNames: (Optional but recommended) Subject Alternative Names (SANs).
+  # Use this if you need the cert to work for multiple addresses or subdomains.
+  # dnsNames:
+  # - www.myapp.internal.com
+  # - api.myapp.internal.com
+
+  # isCA: Used if you are building an internal PKI hierarchy.
+  # False means this is a leaf certificate for an application to use.
+  isCA: false
+
+  # ============================================================================
+  # Key Configuration
+  # ============================================================================
+  # privateKey: Defines how the private key should be generated.
+  privateKey:
+    algorithm: RSA
+    encoding: PKCS1
+    size: 2048 # 2048 is standard; 4096 is more secure but more CPU intensive during handshakes.
+
+  # ============================================================================
+  # Issuer Reference (The "Who signs this?" pointer)
+  # ============================================================================
+  # This section tells the Operator WHICH authority should validate and sign this request.
+  # It decouples the "Need" (Certificate) from the "Provider" (Issuer).
+  issuerRef:
+    # name: Must match the metadata.name of an Issuer or ClusterIssuer
+    name: selfsigned-issuer
+    
+    # kind:
+    # - Issuer: Namespace-scoped. Can only sign certs in the SAME namespace.
+    # - ClusterIssuer: Cluster-scoped. Can sign certs in ANY namespace.
+    kind: ClusterIssuer
+    
+    group: cert-manager.io

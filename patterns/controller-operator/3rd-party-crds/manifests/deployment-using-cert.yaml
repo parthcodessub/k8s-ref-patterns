@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: secured-app
+  namespace: default
+  labels:
+    app: secured-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: secured-app
+  template:
+    metadata:
+      labels:
+        app: secured-app
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 443
+        volumeMounts:
+        # Mount the certificates into the container
+        - name: tls-certs
+          mountPath: "/etc/nginx/ssl"
+          readOnly: true
+      volumes:
+      # This volume references the Secret created by Cert-Manager
+      - name: tls-certs
+        secret:
+          secretName: my-test-cert-tls # Must match the secretName in Certificate CR

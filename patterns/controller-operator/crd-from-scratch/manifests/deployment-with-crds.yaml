@@ -1,0 +1,7 @@
+apiVersion: webapp.mydomain.com/v1
+kind: AppService
+metadata:
+  name: my-app
+spec:
+  replicas: 2
+  image: nginx:alpine

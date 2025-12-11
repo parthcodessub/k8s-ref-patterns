@@ -1,0 +1,9 @@
+apiVersion: webapp.mydomain.com/v1
+kind: AppService
+metadata:
+  labels:
+    app.kubernetes.io/name: appservice-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: appservice-sample
+spec:
+  # TODO(user): Add fields here
