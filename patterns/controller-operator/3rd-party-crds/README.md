@@ -96,6 +96,16 @@ kubectl get secret my-test-cert-tls
 ```
 If you see that Secret, the pattern worked. The Operator successfully translated your **Intent** (Certificate CR) into **Reality** (Secret).
 
+#### Deep Dive: Inside the Secret
+If you decode the secret (`kubectl get secret my-test-cert-tls -o yaml`), you will see three fields. All are **PEM encoded** (Base64 wrapper).
+
+| Key | Content | Description |
+| :--- | :--- | :--- |
+| `tls.crt` | `-----BEGIN CERTIFICATE----- ...` | The **Public Key** (Signed Certificate). This is what your server sends to clients. |
+| `tls.key` | `-----BEGIN RSA PRIVATE KEY----- ...` | The **Private Key**. This MUST stay secure. It pairs with the public key to prove identity. |
+| `ca.crt` | `-----BEGIN CERTIFICATE----- ...` | (Optional) The Public Key of the Authority that signed it. Used for trust verification. |
+
+
 ---
 
 ### Step 5: How an App uses the Secret
@@ -115,6 +125,36 @@ The App doesn't know about Cert-Manager. It just mounts the standard K8s Secret.
         secret:
           secretName: my-test-cert-tls # <--- K8s injects the Operator-created secret
 ```
+
+---
+
+### Step 6: Service Mesh Integration (Advanced)
+**Scenario**: "Can these certs be used for Service Mesh mTLS communication?"
+
+**Short Answer**: For **Edge TLS** (Ingress), YES. For **Internal mTLS** (Service-to-Service), usually NO (the Mesh handles that).
+
+#### Use Case A: Edge TLS (The Standard Pattern)
+You want your Ingress Gateway to terminate HTTPS using the certificate you just requested. This is the most common integration.
+
+**File**: [manifests/istio-gateway-using-cert.yaml](manifests/istio-gateway-using-cert.yaml)
+
+```yaml
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+spec:
+  servers:
+  - port: { number: 443, name: https, protocol: HTTPS }
+    tls:
+      mode: SIMPLE
+      credentialName: my-test-cert-tls # <--- The Operator-created Secret
+```
+
+#### Use Case B: Internal mTLS (The "Plugin" Pattern)
+Istio usually generates its own short-lived certificates for every pod (`spiffe://cluster.local/ns/default/sa/myapp`) using its own CA (Istiod).
+
+However, you *can* tell Istio to **delegate** this to Cert-Manager (e.g., via `cert-manager-istio-csr`).
+*   **Why?** If you need your pod-to-pod certificates to be signed by a corporate Root CA (Vault/Venafi) instead of a self-signed Istio Root.
+*   **How?** You replace the built-in Istio CA logic with an agent that asks Cert-Manager for identity. This is complex setup and out of scope for this basic lab.
 
 ---
 

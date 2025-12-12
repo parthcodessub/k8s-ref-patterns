@@ -1,0 +1,23 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: dev-team
+  name: app-debugger
+rules:
+# 1. Allow core workload viewing
+- apiGroups: [""] # Core API group
+  resources: ["pods", "pods/log", "services", "configmaps"]
+  verbs: ["get", "list", "watch"]
+# 2. Allow executing commands (Crucial for debugging)
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+# 3. Allow managing deployments (Apps API group)
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# -----------------------------------------------------------------------------
+# SECURITY NOTE: DENY BY DEFAULT
+# Kubernetes has no "Deny" rules.
+# Because "secrets" are not listed in any rule above, they are strictly FORBIDDEN.
+# -----------------------------------------------------------------------------

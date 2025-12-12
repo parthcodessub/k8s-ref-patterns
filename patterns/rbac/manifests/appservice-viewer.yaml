@@ -1,0 +1,19 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: view-appservices
+  labels:
+    # -------------------------------------------------------------------------
+    # AGGREGATION LABEL (The "Magic"):
+    # This label tells the Kubernetes Controller Manager to automatically merge
+    # these rules into the system's default "view" ClusterRole.
+    # -------------------------------------------------------------------------
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+
+  #   clusterRoleSelectors:
+  # - matchLabels:
+  #     my-custom-label: "true"
+rules:
+- apiGroups: ["webapp.mydomain.com"]
+  resources: ["appservices"]
+  verbs: ["get", "list", "watch"]

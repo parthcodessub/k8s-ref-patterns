@@ -1,0 +1,23 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jane-debugger-binding
+  namespace: dev-team
+subjects:
+- kind: User
+  name: jane # This is the "Subject"
+  apiGroup: rbac.authorization.k8s.io
+  apiGroup: rbac.authorization.k8s.io
+  
+  # ---------------------------------------------------------------------------
+  # REAL WORLD PATTERN: GROUP BINDING
+  # In a real Enterprise with OIDC (Okta/AD), you bind to Groups, not Users.
+  # This cleanly separates "Access" (RBAC) from "Identity" (IdP).
+  # ---------------------------------------------------------------------------
+  # - kind: Group
+  #   name: "dev-team-group"
+  #   apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: app-debugger # This matches the Role above
+  apiGroup: rbac.authorization.k8s.io
