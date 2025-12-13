@@ -63,6 +63,14 @@ spec:
 kubectl apply -f 3rd-party-crds/manifests/issuer.yaml
 ```
 
+> [!IMPORTANT]
+> **Important Distinction 💡**
+>
+> While your command won't delete the *CRD itself* (the definition), it will delete any *Custom Resources (CRs)* that were created from that CRD if they were created in the default namespace.
+>
+> *   **CRD (Definition)**: Cluster-scoped. Stays in the cluster.
+> *   **CR (Instance)**: Namespace-scoped (usually). Will be deleted by your command if it matches the namespace and is included in the resource types by the `all` keyword (which often includes custom resources).
+
 ---
 
 ### Step 3: Create a Custom Resource (The User Action)
