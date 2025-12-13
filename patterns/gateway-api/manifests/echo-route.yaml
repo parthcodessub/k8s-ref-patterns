@@ -4,13 +4,19 @@ metadata:
   name: echo-route
   namespace: default
 spec:
+  # 1. ATTACHMENT: "I want to plug into the Gateway named 'my-gateway'"
   parentRefs:
     - name: my-gateway
+      # namespace: infra-ns # If the Gateway was in a different namespace
+
+  # 2. LOGIC: "If the URL starts with /echo..."
   rules:
     - matches:
         - path:
             type: PathPrefix
             value: /echo
+      
+      # 3. DESTINATION: "...send traffic to the Service named 'echo'"
       backendRefs:
         - name: echo
           port: 8080
