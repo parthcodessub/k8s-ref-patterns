@@ -1,0 +1,38 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: my-gateway
+  namespace: default
+spec:
+  selector:
+    istio: ingressgateway # use istio default controller
+  servers:
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE # Standard TLS termination at the edge
+      credentialName: my-test-cert-tls # <--- The Operator-created Secret
+    hosts:
+    - "myapp.internal.com"
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: my-service-route
+  namespace: default
+spec:
+  hosts:
+  - "myapp.internal.com"
+  gateways:
+  - my-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: secured-app # Points to our Deployment Service
+        port:
+          number: 80
