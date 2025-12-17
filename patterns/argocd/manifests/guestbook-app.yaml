@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: guestbook
+  namespace: argocd
+spec:
+  project: default
+  # 1. The Source (Git)
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: guestbook
+  # 2. The Destination (Cluster)
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  # 3. Sync Policy (Manual)
+  # We use Manual sync first so you can clearly see the "OutOfSync" state
+  syncPolicy:
+    syncOptions:
+    - CreateNamespace=true
