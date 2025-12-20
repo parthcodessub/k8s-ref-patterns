@@ -14,6 +14,11 @@ spec:
     spec:
       containers:
       - name: main
-        image: nginx:1.21 # We will "promote" this to 1.22 later
+        # PROMOTION LAB: We are commenting out 1.21 and moving to 1.22 to simulate 
+        # a new release. Because this is in the 'base' folder:
+        # 1. Dev (Auto-Sync) will deploy this change immediately.
+        # 2. QA (Manual-Sync) will detect the 'OutOfSync' state but WAIT for approval.
+        # image: nginx:1.21 
+        image: nginx:1.22
         ports:
-        - containerPort: 80
+        - containerPort: 80 # Must match the Service targetPort

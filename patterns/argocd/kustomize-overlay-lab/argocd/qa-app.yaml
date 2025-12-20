@@ -12,9 +12,12 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: qa
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
+  syncPolicy: 
+    # MANUAL MODE (Approval Gate): 
+    # By commenting out 'automated', we require a human to click "Sync" in the 
+    # Argo CD UI. This allows us to review the "Diff" before changes are applied to QA.
+    # automated:
+    #   prune: true
+    #   selfHeal: true
     syncOptions:
     - CreateNamespace=true
