@@ -6,9 +6,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/YOUR_USER/YOUR_REPO.git
+    repoURL: https://github.com/parthcodessub/k8s-ref-patterns.git
     targetRevision: HEAD
-    path: overlays/dev
+    path: patterns/argocd/kustomize-overlay-lab/overlays/dev
   destination:
     # Use the internal DNS name for the local cluster. 
     # Do NOT use https://127.0.0.1:6443 as pods cannot reach 'localhost' of the host.

@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: qa-my-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/parthcodessub/k8s-ref-patterns.git
+    targetRevision: HEAD
+    path: patterns/argocd/kustomize-overlay-lab/overlays/qa
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: qa
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
