@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: dev-my-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/YOUR_USER/YOUR_REPO.git
+    targetRevision: HEAD
+    path: overlays/dev
+  destination:
+    # Use the internal DNS name for the local cluster. 
+    # Do NOT use https://127.0.0.1:6443 as pods cannot reach 'localhost' of the host.
+    server: https://kubernetes.default.svc
+    namespace: dev
+  syncPolicy:
+    automated: # INSTANT DEPLOYMENT
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true

@@ -1,0 +1,21 @@
+# The Service serves as a stable IP/DNS name. Kubernetes automatically creates an 'Endpoints' 
+# object for this Service, which is a dynamic list of valid Pod IP addresses that match 
+# the selector below. Traffic is load-balanced across this list.
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app-svc
+spec:
+  selector:
+    app: my-app # Targets all Pods with label 'app: my-app' (defined in Deployment)
+  ports:
+  - port: 80
+    targetPort: 80
+
+# --- Service & Mesh Summary ---
+# 1. Standard K8s: All Service types (ClusterIP, NodePort, LoadBalancer) use 
+#    the same 'Endpoints' list. kube-proxy manages routing to Pod IPs.
+# 2. Istio Sidecar: Envoy sidecars bypass kube-proxy. They pull Pod IPs from 
+#    Istiod (EDS) and route directly Pod-to-Pod for mTLS and advanced LB.
+# 3. Ambient Mesh: Sidecar-less. Node-level Ztunnels handle secure transport 
+#    using a specialized internal registry, while Waypoint Proxies handle L7.

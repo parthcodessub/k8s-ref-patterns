@@ -1,0 +1,12 @@
+# The 'Overlay' kustomization inherits the 'Base' and applies environment-specific changes.
+resources:
+- ../../base
+
+# namePrefix: Prepends a string to the 'name' of ALL resources.
+# Useful for environment isolation (e.g., 'my-app' becomes 'dev-my-app').
+namePrefix: dev-
+
+# commonLabels: Appends these labels to ALL resources (Deployments, Services, etc.).
+# It also automatically updates Selectors so that the Service still finds the Pods.
+commonLabels:
+  env: dev

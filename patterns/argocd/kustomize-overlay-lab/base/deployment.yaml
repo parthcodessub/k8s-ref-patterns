@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app # Must match the Service selector to receive traffic
+    spec:
+      containers:
+      - name: main
+        image: nginx:1.21 # We will "promote" this to 1.22 later
+        ports:
+        - containerPort: 80

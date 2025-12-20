@@ -1,0 +1,9 @@
+# The kustomization.yaml file acts as the "Inventory" and "Foundation" for your app.
+# 1. Aggregation: It groups all related manifests (Deployments, Services, etc.) into a single unit.
+# 2. Inheritance: This 'base' config is kept "vanilla" so that environment-specific overlays 
+#    (Dev, QA, Prod) can inherit these settings and only patch the differences.
+# 3. Common Metadata: You can add settings here that apply to ALL resources at once.
+
+resources:
+- deployment.yaml
+- service.yaml

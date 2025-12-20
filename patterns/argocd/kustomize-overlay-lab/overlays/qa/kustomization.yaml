@@ -1,0 +1,20 @@
+resources:
+- ../../base
+namePrefix: qa-
+
+# patches: Allows you to 'override' or 'surgicaly modify' specific fields in the base 
+# YAML without rewriting the whole file. 
+patches:
+- target:
+    # target: Acts as a filter to tell Kustomize WHICH resource is being modified.
+    kind: Deployment
+    name: my-app
+  patch: |-
+    # JSON 6902 Patch: This specific operation replaces the 'replicas' count 
+    # to 2, overriding the value of 1 defined in 'base/deployment.yaml'.
+    - op: replace
+      path: /spec/replicas
+      value: 2
+
+commonLabels:
+  env: qa
