@@ -19,6 +19,6 @@ spec:
         # 1. Dev (Auto-Sync) will deploy this change immediately.
         # 2. QA (Manual-Sync) will detect the 'OutOfSync' state but WAIT for approval.
         # image: nginx:1.21 
-        image: nginx:1.22
+        image: nginx:1.23
         ports:
         - containerPort: 80 # Must match the Service targetPort
