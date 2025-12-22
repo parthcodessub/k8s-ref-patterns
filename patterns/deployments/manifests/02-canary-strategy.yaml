@@ -1,4 +1,19 @@
-# 02-canary-strategy.yaml
+# ==============================================================================
+# STRATEGY: CANARY ROLLOUT (Argo Rollouts)
+# ==============================================================================
+# This manifest demonstrates a multi-step Canary deployment strategy.
+# Unlike a standard RollingUpdate, this allows for incremental traffic shifting
+# and manual approval gates.
+#
+# HOW IT WORKS:
+# 1. Step 1 (20%): Shifts 20% of traffic to the new version.
+# 2. Step 2 (Manual): Pauses indefinitely. Requires 'kubectl argo rollouts promote' 
+#    or UI interaction to continue.
+# 3. Step 3 (50%): Shifts 50% of traffic to the new version.
+# 4. Step 4 (Timer): Pauses for 10 seconds for automated health observation.
+# 5. Final: Promotes to 100% and terminates old version.
+# ==============================================================================
+
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout

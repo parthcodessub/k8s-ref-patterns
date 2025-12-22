@@ -1,4 +1,16 @@
-# 01-initial-rollout.yaml
+# ==============================================================================
+# PHASE: INITIAL ROLLOUT (Baseline)
+# ==============================================================================
+# This manifest performs the initial deployment of the 'veggie-api' application.
+# It sets the baseline (v1.0.0) so that subsequent canary/blue-green updates
+# have a stable version to migrate traffic from.
+#
+# DESIGN:
+# - Uses Argo Rollouts for advanced deployment patterns.
+# - Strategy: Canary (set to 100% immediately for the first installation).
+# - Replicas: 4 pods to ensure high availability during the baseline phase.
+# ==============================================================================
+
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout
