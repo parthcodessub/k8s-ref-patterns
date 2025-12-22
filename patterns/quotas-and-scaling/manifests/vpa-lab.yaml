@@ -1,0 +1,97 @@
+# ==============================================================================
+# LAB: VERTICAL POD AUTOSCALER (VPA) - Right-sizing Workloads
+# ==============================================================================
+# Use Case: You have an application with unpredictable or unknown resource 
+# requirements. Instead of guessing (Junior) or setting massive limits (Expensive),
+# we use VPA to observe real-world usage and adjust requests automatically.
+# ==============================================================================
+
+---
+# 1. THE WORKLOAD (The Problem)
+# This app requests very little (100m CPU, 50Mi RAM), but acts "hungry" by
+# consuming much more. Ideally, it should be right-sized to avoid stability
+# issues on the node.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spinach-stress
+  namespace: default
+  labels:
+    app: spinach-stress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: spinach-stress
+  template:
+    metadata:
+      labels:
+        app: spinach-stress
+    spec:
+      containers:
+      - name: stress-container
+        # Using a standard Linux image to run a custom stress script.
+        # In a real SRE scenario, this represents your production application.
+        image: ubuntu:latest
+        command: ["/bin/sh"]
+        # This script generates consistent CPU load by running 'yes' in a loop.
+        # It creates a 'sawtooth' load pattern which is great for testing VPA logic.
+        args: ["-c", "while true; do timeout 0.5s yes >/dev/null; sleep 0.5s; done"]
+        resources:
+          requests:
+            # We intentionally UNDER-provision the 'requests'.
+            # VPA will notice the actual usage is much higher and suggest updates.
+            cpu: "100m"
+            memory: "50Mi"
+          # NOTE: 'limits' are omitted here. VPA primarily manages 'requests'.
+          # If limits are set, VPA will maintain the initial request-to-limit ratio.
+
+---
+# 2. THE POLICY (The Solution)
+# The VPA controller consists of three components: Recommender, Updater, and Admission Plugin.
+# This manifest defines a VerticalPodAutoscaler strategy for our deployment.
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: spinach-vpa-policy
+  namespace: default
+spec:
+  # targetRef: Connects this policy to the specific workload.
+  # VPA can target Deployments, StatefulSets, and even DaemonSets.
+  targetRef:
+    apiVersion: "apps/v1"
+    kind: Deployment
+    name: spinach-stress
+  
+  updatePolicy:
+    # updateMode: Defines how VPA applies its recommendations.
+    # - "Auto": VPA can evict pods to restart them with new resource sizes.
+    # - "Recreate": Similar to Auto, but only if the pod is already restarting.
+    # - "Initial": Only assigns values at pod creation time; never evicts later.
+    # - "Off": Only provides recommendations (View via 'kubectl describe vpa').
+    # Lead Tip: Always start with "Off" in production to observe for 48-72 hours.
+    updateMode: "Auto"
+
+  # resourcePolicy: (Optional) Allows you to set bounds on what VPA can suggest.
+  # This prevents VPA from scaling a pod to 0 or to 100 CPUs by accident.
+  # View recommendations with: kubectl get vpa spinach-vpa-policy -o yaml
+  resourcePolicy:
+    containerPolicies:
+      - containerName: '*'
+        minAllowed:
+          cpu: 50m
+          memory: 32Mi
+        maxAllowed:
+          cpu: 1000m
+          memory: 256Mi
+        controlledResources: ["cpu", "memory"]
+
+# ------------------------------------------------------------------------------
+# HOW TO VERIFY THIS LAB:
+# 1. Apply the manifest: kubectl apply -f vpa-lab.yaml
+# 2. Wait 2-5 minutes for the 'Recommender' to collect metrics from Metrics Server.
+# 3. Check recommendations:
+#    kubectl describe vpa spinach-vpa-policy
+# 4. Watch for restarts (if updateMode is "Auto"):
+#    kubectl get pods -w
+# ------------------------------------------------------------------------------
