@@ -257,3 +257,28 @@ The Gateway API is the "steering wheel" you use to tell Istio what to build.
 
 > **Pro-Tip**: If you have a service that only needs **mTLS and basic connectivity** (L4), you **do not** need to create a Waypoint. The Ztunnel handles secure L4 transport "out of the box" as soon as you label the namespace for ambient mode.
 
+#### 7. FAQ: The "Encrypted Packet" Paradox
+
+**Q: If the traffic is encrypted via mTLS (HBONE) when it leaves the Ztunnel, how can the Waypoint Proxy "see" inside the packet to read HTTP headers and apply policy?**
+
+This is a common confusion because the diagram shows `Ztunnel -> HBONE -> Waypoint`.
+
+**The Answer: The "Sandwich" Encryption.**
+
+The Waypoint Proxy is **NOT** a transparent bridge; it is a **Termination Point**.
+
+1.  **Leg 1 (Source to Waypoint)**:
+    *   The Source Ztunnel encrypts the traffic and sends it to the Waypoint.
+    *   The Waypoint **terminates (decrypts)** this mTLS connection. It holds the private keys for the service identity.
+    *   *At this split second, the packet is unencrypted inside the Waypoint's memory.*
+
+2.  **Inspection & Policy**:
+    *   Now that it has raw TCP/HTTP, the Waypoint (Envoy) reads the path, headers, and body.
+    *   It applies your L7 rules (e.g., "Allow `/v1/transactions` but Block `/v1/admin`").
+
+3.  **Leg 2 (Waypoint to Destination)**:
+    *   If the request is allowed, the Waypoint **re-encrypts** the packet (starts a *new* HBONE tunnel).
+    *   It sends this new encrypted packet to the Destination Ztunnel.
+
+**Why design it this way?**
+Because **Ztunnels (on the node) are strictly L4**. They are designed to be dumb, fast, and secure. They *cannot* afford the CPU cost of parsing HTTP headers for every packet. To do "smart" routing, we MUST detour the traffic to a dedicated proxy (the Waypoint) that has the power to decrypt, inspect, and forward.
