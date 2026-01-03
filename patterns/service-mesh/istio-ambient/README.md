@@ -75,13 +75,13 @@ graph LR
     User((User/Browser)) -->|HTTPS| NLB(AWS NLB)
 
     subgraph Kubernetes Cluster
-        NLB -->|TCP| IGW[Ingress Gateway<br/>(Envoy Pods)]
+        NLB -->|TCP| IGW["Ingress Gateway<br/>(Envoy Pods)"]
 
         subgraph "Istio Ambient Mesh (Secure Overlay)"
-            IGW -- "HBONE (mTLS)" --> Waypoint[L7 Waypoint Proxy<br/>(Optional)]
-            Waypoint -- "HBONE (mTLS)" --> ZTunnel[Node Ztunnel]
+            IGW -- "HBONE (mTLS)" --> Waypoint["L7 Waypoint Proxy<br/>(Optional)"]
+            Waypoint -- "HBONE (mTLS)" --> ZTunnel["Node Ztunnel"]
             IGW -- "HBONE (mTLS)" --> ZTunnel
-            ZTunnel -- "Plaintext (Localhost)" --> App[Target App Pod]
+            ZTunnel -- "Plaintext (Localhost)" --> App["Target App Pod"]
         end
     end
 
@@ -164,3 +164,52 @@ spec:
 
 > **Does Istiod manage the Gateway?**
 > **Yes.** When you apply the `Gateway` YAML, `istiod` (the controller) acts as a provisioner. It ensures the Deployment and Service exist. If you delete the Gateway resource, `istiod` cleans up the Envoy pods and the cloud NLB automatically.
+
+
+
+#### 6. Deep Dive: Lifecycle & Management
+
+The management of Ztunnels and Waypoints differs fundamentally due to their roles in the cluster.
+
+##### A. Lifecycle: Who creates the resources?
+
+| Component | Managed By... | Creation Timing |
+| :--- | :--- | :--- |
+| **Ztunnel** | Administrator / Helm | **Installed once** during initial Istio Ambient setup (DaemonSet). |
+| **Waypoint Proxy** | `istiod` (Control Plane) | **Automatically provisioned** when you apply a `Gateway` resource with the `gatewayClassName: istio-waypoint`. |
+
+> **Is the Waypoint "internally managed"?**
+> **Yes.** You do not need to manually create a `Deployment` or `Service` for a waypoint.
+> You simply apply a standard Kubernetes **Gateway** manifest. The Istio Controller (`istiod`) detects the "waypoint" class and automatically spins up the Envoy pods and the associated Service for you.
+
+##### B. Configuration: The Role of Istiod
+Once the pods are running, `istiod` acts as the "brain" for both components:
+
+*   **For Ztunnel**: Istiod sends a **specialized, lightweight set of rules** (via xDS). These rules tell the Ztunnel which pods belong to which service and how to perform mTLS between them.
+*   **For Waypoint**: Istiod sends **full Layer 7 configuration** (similar to what it sent to traditional sidecars). This includes your `HTTPRoutes`, retries, and header manipulation rules.
+
+##### C. Connecting the Gateway API to Ambient
+The Gateway API is the "steering wheel" you use to tell Istio what to build.
+
+1.  **Gateway Resource (as Ingress)**:
+    *   **Intent**: "I need an external entry point."
+    *   **Action**: Istiod builds an **Ingress Gateway** (Envoy) and usually triggers the creation of a Cloud NLB.
+
+2.  **Gateway Resource (as Waypoint)**:
+    *   **Intent**: "I need an internal L7 proxy for this namespace/service."
+    *   **Action**: Istiod builds an **Internal Waypoint Proxy** (Envoy) for that specific scope.
+
+3.  **HTTPRoute Resource**:
+    *   **Intent**: "Here is how to route traffic."
+    *   **Action**: Tells the Waypoint (or Ingress) exactly how to handle requests (e.g., "Send `/api/v1` to `service-a`").
+
+##### D. Final Review
+*   **Do you separately manage Ztunnel?**
+    *   **No.** Only during initial installation. It runs on every node as infrastructure.
+*   **Do you separately manage Waypoint?**
+    *   **Sort of.** You manage the `Gateway` YAML (the *intent*), and Istiod manages the Pods/Deployments (the *reality*).
+*   **Does the HTTPRoute handle the routing?**
+    *   Yes, but strictly speaking, the **Waypoint executes the rules** defined in that `HTTPRoute`.
+
+> **Pro-Tip**: If you have a service that only needs **mTLS and basic connectivity** (L4), you **do not** need to create a Waypoint. The Ztunnel handles secure L4 transport "out of the box" as soon as you label the namespace for ambient mode.
+
