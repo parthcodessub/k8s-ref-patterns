@@ -35,23 +35,23 @@ KEDA splits scaling into two phases. This is the most critical concept to unders
 ```mermaid
 graph TD
     subgraph "Phase 1: Activation (KEDA Operator)"
-        Event[External Event\n(e.g., 5 messages in Queue)]
+        Event["External Event<br/>(e.g., 5 messages in Queue)"]
         Operator[KEDA Operator]
         Deploy[Deployment]
         
         Event -->|Poll| Operator
-        Operator -->|0 Messages?| Deploy(Scale to 0)
-        Operator -->|1+ Messages?| Deploy(Scale to 1)
+        Operator -->|0 Messages?| Deploy
+        Operator -->|1+ Messages?| Deploy
     end
 
     subgraph "Phase 2: Horizontal Scaling (HPA + Metrics Server)"
         HMS[KEDA Metrics Server]
         K8sHPA[Kubernetes HPA]
-        Prom/SQS[External Source]
+        PromSQS[External Source]
         
         K8sHPA -->|Request Metric| HMS
-        HMS -->|Query API| Prom/SQS
-        K8sHPA -->|Calc Replicas| Deploy(Scale to N)
+        HMS -->|Query API| PromSQS
+        K8sHPA -->|Calc Replicas| Deploy
     end
     
     Operator -.->|Creates| K8sHPA
