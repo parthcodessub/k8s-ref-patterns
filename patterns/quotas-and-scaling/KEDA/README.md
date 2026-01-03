@@ -499,6 +499,11 @@ In KEDA, we almost always use it as a **Queue** because we need to measure the "
 ### Q: Does KEDA replace the HPA?
 **A:** No. KEDA **manages** the HPA. For 1 to N scaling, KEDA creates a standard HPA and serves as the metrics provider. KEDA is only "hands-on" for the **0 ↔ 1** transition, which the native HPA cannot do on its own.
 
+### Q: Can KEDA do Vertical Scaling (CPU/RAM)?
+**A: No.** KEDA is strictly designed for **Horizontal Scaling** (adding/removing Pods) based on events.
+*   **Vertical Scaling** (Upsizing Pods): Use the **Kubernetes Vertical Pod Autoscaler (VPA)**.
+*   *Note*: You can use KEDA (for # of pods) and VPA (for size of pods) together, but ensure their policies don't conflict (e.g., KEDA scaling up while VPA restarts pods to resize them).
+
 
 
 
