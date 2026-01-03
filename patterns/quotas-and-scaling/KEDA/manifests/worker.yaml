@@ -1,0 +1,26 @@
+# -------------------------------------------------------------
+# Consumer: Redis Worker
+# -------------------------------------------------------------
+# This is the application that processes jobs.
+# NOTICE: replicas is set to 0.
+# We delegate the "Activation" (0->1) entirely to the KEDA Operator.
+# -------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-worker
+spec:
+  replicas: 0  # <--- Starts at Zero!
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+      - name: worker
+        image: busybox
+        # Simulates processing work (sleeps 30s)
+        command: ["sh", "-c", "echo 'Processing job...'; sleep 30"]

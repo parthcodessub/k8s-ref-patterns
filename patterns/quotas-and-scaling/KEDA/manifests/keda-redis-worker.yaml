@@ -1,0 +1,28 @@
+# -------------------------------------------------------------
+# The Bridge: ScaledObject
+# -------------------------------------------------------------
+# CONCEPTUAL DEEP DIVE:
+# Q: Where does this object "run"?
+# A: It doesn't "run" anywhere! It is a passive record in the K8s API (etcd).
+#    The KEDA Operator (running in the 'keda' namespace) acts as the Controller.
+#    It Watches this resource. When you apply this file, two things happen:
+#    1. The Operator's "Reconcile Loop" is triggered (it notices a new object).
+#    2. The Operator starts a "Polling Loop" (ticker) based on 'pollingInterval'.
+# -------------------------------------------------------------
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: redis-scaledobject
+spec:
+  scaleTargetRef:
+    name: redis-worker
+  pollingInterval: 5   # Check Redis every 5 seconds
+  cooldownPeriod:  30  # Wait 30s after queue is empty to scale back to 0
+  minReplicaCount: 0   # Allow scaling to zero
+  maxReplicaCount: 5   # Safety cap
+  triggers:
+  - type: redis
+    metadata:
+      address: redis-svc.default.svc.cluster.local:6379
+      listName: my-jobs
+      listLength: "5"  # Target: 5 items per pod
