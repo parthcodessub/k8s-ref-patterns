@@ -70,29 +70,73 @@ To visualize how these pieces fit together, imagine a request coming from a user
 
 ### Visualizing the Flow
 
+### Visualizing the Flow: North-South + East-West
+
+This diagram shows the complete lifecycle:
+1.  **North-South**: User hits **Account Summary**.
+2.  **East-West (L7)**: Account Summary calls **Transactions** (secured by a Waypoint).
+3.  **East-West (L4)**: Account Summary calls **Address Service** (secured by Ztunnel only).
+
 ```mermaid
 graph LR
-    User((User/Browser)) -->|HTTPS| NLB(AWS NLB)
+    User((User)) -->|HTTPS| NLB(AWS NLB)
 
-    subgraph Kubernetes Cluster
-        NLB -->|TCP| IGW["Ingress Gateway<br/>(Envoy Pods)"]
+    subgraph "Kubernetes Cluster"
+        NLB -->|TCP| IGW["Ingress Gateway<br/>(Envoy)"]
 
-        subgraph "Istio Ambient Mesh (Secure Overlay)"
-            IGW -- "HBONE (mTLS)" --> Waypoint["L7 Waypoint Proxy<br/>(Optional)"]
-            Waypoint -- "HBONE (mTLS)" --> ZTunnel["Node Ztunnel"]
-            IGW -- "HBONE (mTLS)" --> ZTunnel
-            ZTunnel -- "Plaintext (Localhost)" --> App["Target App Pod"]
+        subgraph "Node A (Account Svc)"
+            ZtAccount["Ztunnel A"]
+            PodAccount["Account Summary"]
         end
+
+        subgraph "Node B (Transactions Svc)"
+            ZtTrans["Ztunnel B"]
+            PodTrans["Transactions"]
+        end
+
+        subgraph "Node C (Address Svc)"
+            ZtAddr["Ztunnel C"]
+            PodAddr["Address"]
+        end
+
+        subgraph "Waypoints (L7 Policies)"
+            WP_Account["Waypoint<br/>(Account)"]
+            WP_Trans["Waypoint<br/>(Transactions)"]
+        end
+
+        %% 1. North-South Flow
+        IGW == "HBONE" ==> WP_Account
+        WP_Account == "HBONE" ==> ZtAccount
+        ZtAccount -. "Plain" .-> PodAccount
+
+        %% 2. East-West Flow (L7 - Goes via Waypoint)
+        %% Account -> Transactions
+        PodAccount -. "Plain" .-> ZtAccount
+        ZtAccount == "HBONE<br/>(mTLS)" ==> WP_Trans
+        WP_Trans == "HBONE<br/>(mTLS)" ==> ZtTrans
+        ZtTrans -. "Plain" .-> PodTrans
+
+        %% 3. East-West Flow (L4 Only - Ztunnel to Ztunnel)
+        %% Account -> Address (No Waypoint)
+        ZtAccount -. "HBONE<br/>(mTLS L4)" .-> ZtAddr
+        ZtAddr -. "Plain" .-> PodAddr
     end
 
     classDef aws fill:#FF9900,stroke:#232F3E,stroke-width:2px,color:white;
-    classDef istio fill:#466BB0,stroke:#333,stroke-width:2px,color:white;
-    classDef k8s fill:#326CE5,stroke:#333,stroke-width:2px,color:white;
+    classDef envoy fill:#E1E5F2,stroke:#333,stroke-width:1px,color:black,stroke-dasharray: 5 5;
+    classDef ztunnel fill:#466BB0,stroke:#333,stroke-width:2px,color:white;
+    classDef app fill:#326CE5,stroke:#333,stroke-width:2px,color:white;
 
     class NLB aws;
-    class IGW,Waypoint,ZTunnel istio;
-    class App k8s;
+    class IGW,WP_Account,WP_Trans envoy;
+    class ZtAccount,ZtTrans,ZtAddr ztunnel;
+    class PodAccount,PodTrans,PodAddr app;
 ```
+
+#### Understanding the Paths
+*   **Path 1 (Ingress)**: Traffic enters via Gateway -> routed to Account Waypoint (for auth/limiting) -> Account Pod.
+*   **Path 2 (L7 Mesh Call)**: Account Pod calls `http://transactions`. Because *Transactions* has a **Waypoint**, traffic MUST go: `Ztunnel A` -> `Transactions Waypoint` -> `Ztunnel B`. This allows retries, circuit breaking, etc.
+*   **Path 3 (L4 Optimized Call)**: Account Pod calls `tcp://address-db`. *Address Service* has **NO Waypoint**. Traffic goes primarily L4: `Ztunnel A` -> `Ztunnel C`. Fastest path, encryption only.
 
 ---
 
