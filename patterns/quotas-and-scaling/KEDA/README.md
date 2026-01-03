@@ -40,8 +40,8 @@ graph TD
         Deploy[Deployment]
         
         Event -->|Poll| Operator
-        Operator -->|0 Messages?| Deploy
-        Operator -->|1+ Messages?| Deploy
+        Operator -->|"0 Messages? (Scale to 0)"| Deploy
+        Operator -->|"1+ Messages? (Scale to 1)"| Deploy
     end
 
     subgraph "Phase 2: Horizontal Scaling (HPA + Metrics Server)"
@@ -51,7 +51,7 @@ graph TD
         
         K8sHPA -->|Request Metric| HMS
         HMS -->|Query API| PromSQS
-        K8sHPA -->|Calc Replicas| Deploy
+        K8sHPA -->|"Calc Replicas (Scale to N)"| Deploy
     end
     
     Operator -.->|Creates| K8sHPA
