@@ -272,3 +272,32 @@ If I were designing a platform today:
 1.  **Web Apps (APIs)**: Use HPA based on **Custom Metrics** (Requests Per Second), not just CPU.
 2.  **Worker Apps (Background)**: Use **KEDA** based on Queue Lag.
 3.  **Sizing**: Use **Goldilocks** (VPA in recommendation mode) to generate reports, but apply changes manually via GitOps to avoid random production restarts.
+
+---
+
+## 7. Cloud Provider Specifics (GKE vs EKS)
+
+Different clouds handle these concepts differently.
+
+### 7.1 Google Kubernetes Engine (GKE): "Batteries Included"
+Google tries to abstract the complexity away. Autoscaling feels "native".
+*   **Managed VPA**: It is a simple checkbox: "Enable Vertical Pod Autoscaling." Google manages the control plane (Recommender/Updater) for you.
+*   **GKE Autopilot**: In this mode, VPA is **enforced**. You cannot turn it off. Google automatically rightsizes your pods and bills you only for what the pods request.
+*   **Multidimensional Pod Autoscaling (MPA)**:
+    *   *Problem*: Standard K8s forbids using HPA and VPA on CPU at the same time.
+    *   *The GKE Fix*: MPA (Beta) allows you to use **HPA for CPU** (add more replicas) while simultaneously using **VPA for Memory** (make existing replicas bigger). This is a powerful pattern for memory-leaking apps that also need high concurrency.
+
+### 7.2 Amazon EKS: "Do It Yourself" (mostly)
+AWS takes a "Vanilla Kubernetes" approach.
+*   **Standard HPA**: You must install the **Metrics Server** yourself (or via an EKS Add-on).
+*   **Standard VPA**: You must install the **VPA Controller** yourself (like in our lab) and manage its updates.
+*   **The EKS Superpower (Karpenter)**: While EKS is standard on Pod scaling, it leads on Node scaling with **Karpenter**.
+
+### Summary Comparison
+
+| Feature | GKE (Google) | EKS (AWS) |
+| :--- | :--- | :--- |
+| **Horizontal Scaling (HPA)** | **Built-in**. Metrics server is pre-installed. | **Add-on**. You must ensure Metrics Server is installed. |
+| **Vertical Scaling (VPA)** | **Managed**. Checkbox to enable. | **Self-Managed**. You install/maintain VPA. |
+| **Advanced Modes** | **MPA**. Scales CPU horizontally and RAM vertically. | **None**. Use standard community tools. |
+| **Node Autoscaling** | GKE Node Auto-provisioning (NAP). | **Karpenter** (Open Source, but AWS-native). |
