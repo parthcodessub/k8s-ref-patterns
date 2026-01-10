@@ -58,7 +58,52 @@ patterns/daemonset-collector/
     │   └── otel-daemonset.yaml  # The Node Agent (One Collector per Node)
 
 
-3. Implementation Details
+
+60: 
+61: ## 3. Architecture Diagram
+62: 
+63: This diagram illustrates how the DaemonSet Collector (Node Agent) interacts with multiple application pods on each node and reports to a central backend.
+64: 
+65: ```mermaid
+66: graph TD
+67:     subgraph "Kubernetes Cluster"
+68:         subgraph "Node A (10.0.0.1)"
+69:             AppA1[App Pod 1<br/>(10.244.0.5)]
+70:             AppA2[App Pod 2<br/>(10.244.0.6)]
+71:             CollectorA[<b>DaemonSet Pod</b><br/>(OTEL Collector)]
+72:             
+73:             CollectorA -->|Scrape HTTP| AppA1
+74:             CollectorA -->|Scrape HTTP| AppA2
+75:         end
+76: 
+77:         subgraph "Node B (10.0.0.2)"
+78:             AppB1[App Pod 3<br/>(10.244.1.8)]
+79:             CollectorB[<b>DaemonSet Pod</b><br/>(OTEL Collector)]
+80:             
+81:             CollectorB -->|Scrape HTTP| AppB1
+82:         end
+83: 
+84:         API[Kubernetes API]
+85:     end
+86: 
+87:     subgraph "External Observability"
+88:         Backend[Central Backend<br/>(Datadog / Honeycomb / Prometheus)]
+89:     end
+90: 
+91:     %% Discovery Flow
+92:     CollectorA -.->|Watch/List| API
+93:     CollectorB -.->|Watch/List| API
+94: 
+95:     %% Export Flow
+96:     CollectorA ==>|Push (OTLP)| Backend
+97:     CollectorB ==>|Push (OTLP)| Backend
+98: 
+99:     style CollectorA fill:#f9f,stroke:#333,stroke-width:2px
+100:     style CollectorB fill:#f9f,stroke:#333,stroke-width:2px
+101: ```
+102: 
+103: ## 4. Implementation Details
+
 
 A. The Application Layer (Golang)
 
@@ -251,3 +296,77 @@ DaemonSet Approach: 100 App Containers + 5 Collector Containers. (Huge savings).
 DaemonSet Risk: The Node Agent needs broad RBAC permissions (list pods cluster-wide) to discover targets.
 
 Sidecar Advantage: A sidecar only needs permissions relevant to its specific parent pod. In highly sensitive multi-tenant clusters, Sidecars may be preferred for stricter isolation.
+
+## 8. Advanced DaemonSet Configurations (Lead Engineer Tips)
+
+To make your DaemonSet truly production-ready, you must go beyond the basic `kind: DaemonSet` manifest.
+
+### 8.1. Running on Control Plane Nodes (Tolerations)
+**Problem**: By default, DaemonSets do not schedule on Control Plane (Master) nodes because they are "Tainted" (`node-role.kubernetes.io/master:NoSchedule`).
+**Fix**: Add tolerations to ensure your metrics collector runs *everywhere*, including the master nodes (which also need monitoring!).
+
+```yaml
+spec:
+  template:
+    spec:
+      tolerations:
+      # Allow execution on Control Plane nodes
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+```
+
+### 8.2. Protecting the Collector (PriorityClass)
+**Problem**: When a Node runs out of memory (OOM), Kubernetes evicts pods. If it evicts your Metrics Collector, you go blind exactly when you need visibility the most.
+**Fix**: Assign a high `PriorityClass` so Kubernetes kills the application pods *before* it kills the monitoring agent.
+
+```yaml
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: monitor-critical
+value: 1000000
+globalDefault: false
+description: "Ensure Monitoring Agents are never evicted."
+---
+apiVersion: apps/v1
+kind: DaemonSet
+spec:
+  template:
+    spec:
+      priorityClassName: monitor-critical
+```
+
+### 8.3. Safe Rollouts (UpdateStrategy)
+**Problem**: By default, a DaemonSet configuration update might restart all agents simultaneously or too quickly, causing a gap in metrics.
+**Fix**: Use `RollingUpdate` with `maxUnavailable`. Setting `maxUnavailable: 1` ensures only one node loses its collector at a time.
+
+```yaml
+spec:
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+```
+
+### 8.4. HostPath & HostPort (The "Break Glass" Access)
+Sometimes the DaemonSet needs access to the underlying Host.
+
+*   **HostPath**: Used for Log Collection. You mount `/var/log/pods` from the Node into the DaemonSet container so the agent can tail the log files directly.
+*   **HostPort**: Used if the DaemonSet needs to receive traffic on a static IP/Port (e.g., acting as a Syslog receiver on port 514). *Use with caution: ports cannot conflict.*
+
+```yaml
+spec:
+  containers:
+  - name: collector
+    volumeMounts:
+    - name: varlog
+      mountPath: /var/log
+  volumes:
+  - name: varlog
+    hostPath:
+      path: /var/log
+```
