@@ -39,17 +39,17 @@ This diagram illustrates how the DaemonSet Collector (Node Agent) interacts with
 graph TD
     subgraph "Kubernetes Cluster"
         subgraph "Node A (10.0.0.1)"
-            AppA1[App Pod 1<br/>(10.244.0.5)]
-            AppA2[App Pod 2<br/>(10.244.0.6)]
-            CollectorA[<b>DaemonSet Pod</b><br/>(OTEL Collector)]
+            AppA1["App Pod 1<br/>(10.244.0.5)"]
+            AppA2["App Pod 2<br/>(10.244.0.6)"]
+            CollectorA["<b>DaemonSet Pod</b><br/>(OTEL Collector)"]
             
             CollectorA -->|Scrape HTTP| AppA1
             CollectorA -->|Scrape HTTP| AppA2
         end
 
         subgraph "Node B (10.0.0.2)"
-            AppB1[App Pod 3<br/>(10.244.1.8)]
-            CollectorB[<b>DaemonSet Pod</b><br/>(OTEL Collector)]
+            AppB1["App Pod 3<br/>(10.244.1.8)"]
+            CollectorB["<b>DaemonSet Pod</b><br/>(OTEL Collector)"]
             
             CollectorB -->|Scrape HTTP| AppB1
         end
@@ -58,7 +58,7 @@ graph TD
     end
 
     subgraph "External Observability"
-        Backend[Central Backend<br/>(Datadog / Honeycomb / Prometheus)]
+        Backend["Central Backend<br/>(Datadog / Honeycomb / Prometheus)"]
     end
 
     %% Discovery Flow
