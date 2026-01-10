@@ -31,52 +31,49 @@ patterns/daemonset-collector/
     │   └── otel-daemonset.yaml  # The Node Agent (One Collector per Node)
 ```
 
+## 3. Architecture Diagram
 
+This diagram illustrates how the DaemonSet Collector (Node Agent) interacts with multiple application pods on each node and reports to a central backend.
 
-60: 
-61: ## 3. Architecture Diagram
-62: 
-63: This diagram illustrates how the DaemonSet Collector (Node Agent) interacts with multiple application pods on each node and reports to a central backend.
-64: 
-65: ```mermaid
-66: graph TD
-67:     subgraph "Kubernetes Cluster"
-68:         subgraph "Node A (10.0.0.1)"
-69:             AppA1[App Pod 1<br/>(10.244.0.5)]
-70:             AppA2[App Pod 2<br/>(10.244.0.6)]
-71:             CollectorA[<b>DaemonSet Pod</b><br/>(OTEL Collector)]
-72:             
-73:             CollectorA -->|Scrape HTTP| AppA1
-74:             CollectorA -->|Scrape HTTP| AppA2
-75:         end
-76: 
-77:         subgraph "Node B (10.0.0.2)"
-78:             AppB1[App Pod 3<br/>(10.244.1.8)]
-79:             CollectorB[<b>DaemonSet Pod</b><br/>(OTEL Collector)]
-80:             
-81:             CollectorB -->|Scrape HTTP| AppB1
-82:         end
-83: 
-84:         API[Kubernetes API]
-85:     end
-86: 
-87:     subgraph "External Observability"
-88:         Backend[Central Backend<br/>(Datadog / Honeycomb / Prometheus)]
-89:     end
-90: 
-91:     %% Discovery Flow
-92:     CollectorA -.->|Watch/List| API
-93:     CollectorB -.->|Watch/List| API
-94: 
-95:     %% Export Flow
-96:     CollectorA ==>|Push (OTLP)| Backend
-97:     CollectorB ==>|Push (OTLP)| Backend
-98: 
-99:     style CollectorA fill:#f9f,stroke:#333,stroke-width:2px
-100:     style CollectorB fill:#f9f,stroke:#333,stroke-width:2px
-101: ```
-102: 
-103: ## 4. Implementation Details
+```mermaid
+graph TD
+    subgraph "Kubernetes Cluster"
+        subgraph "Node A (10.0.0.1)"
+            AppA1[App Pod 1<br/>(10.244.0.5)]
+            AppA2[App Pod 2<br/>(10.244.0.6)]
+            CollectorA[<b>DaemonSet Pod</b><br/>(OTEL Collector)]
+            
+            CollectorA -->|Scrape HTTP| AppA1
+            CollectorA -->|Scrape HTTP| AppA2
+        end
+
+        subgraph "Node B (10.0.0.2)"
+            AppB1[App Pod 3<br/>(10.244.1.8)]
+            CollectorB[<b>DaemonSet Pod</b><br/>(OTEL Collector)]
+            
+            CollectorB -->|Scrape HTTP| AppB1
+        end
+
+        API[Kubernetes API]
+    end
+
+    subgraph "External Observability"
+        Backend[Central Backend<br/>(Datadog / Honeycomb / Prometheus)]
+    end
+
+    %% Discovery Flow
+    CollectorA -.->|Watch/List| API
+    CollectorB -.->|Watch/List| API
+
+    %% Export Flow
+    CollectorA ==>|Push (OTLP)| Backend
+    CollectorB ==>|Push (OTLP)| Backend
+
+    style CollectorA fill:#f9f,stroke:#333,stroke-width:2px
+    style CollectorB fill:#f9f,stroke:#333,stroke-width:2px
+```
+
+## 4. Implementation Details
 
 ### A. The Application Layer (Golang)
 
