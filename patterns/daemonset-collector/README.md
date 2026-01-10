@@ -43,18 +43,18 @@ graph TD
             AppA2["App Pod 2<br/>(10.244.0.6)"]
             CollectorA["<b>DaemonSet Pod</b><br/>(OTEL Collector)"]
             
-            CollectorA -->|Scrape HTTP| AppA1
-            CollectorA -->|Scrape HTTP| AppA2
+            CollectorA -- "Scrape HTTP" --> AppA1
+            CollectorA -- "Scrape HTTP" --> AppA2
         end
 
         subgraph "Node B (10.0.0.2)"
             AppB1["App Pod 3<br/>(10.244.1.8)"]
             CollectorB["<b>DaemonSet Pod</b><br/>(OTEL Collector)"]
             
-            CollectorB -->|Scrape HTTP| AppB1
+            CollectorB -- "Scrape HTTP" --> AppB1
         end
 
-        API[Kubernetes API]
+        K8S_API[Kubernetes API]
     end
 
     subgraph "External Observability"
@@ -62,12 +62,12 @@ graph TD
     end
 
     %% Discovery Flow
-    CollectorA -.->|Watch/List| API
-    CollectorB -.->|Watch/List| API
+    CollectorA -. "Watch/List" .-> K8S_API
+    CollectorB -. "Watch/List" .-> K8S_API
 
     %% Export Flow
-    CollectorA ==>|Push (OTLP)| Backend
-    CollectorB ==>|Push (OTLP)| Backend
+    CollectorA == "Push OTLP" ==> Backend
+    CollectorB == "Push OTLP" ==> Backend
 
     style CollectorA fill:#f9f,stroke:#333,stroke-width:2px
     style CollectorB fill:#f9f,stroke:#333,stroke-width:2px
