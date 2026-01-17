@@ -282,3 +282,47 @@ The Waypoint Proxy is **NOT** a transparent bridge; it is a **Termination Point*
 
 **Why design it this way?**
 Because **Ztunnels (on the node) are strictly L4**. They are designed to be dumb, fast, and secure. They *cannot* afford the CPU cost of parsing HTTP headers for every packet. To do "smart" routing, we MUST detour the traffic to a dedicated proxy (the Waypoint) that has the power to decrypt, inspect, and forward.
+
+
+
+---
+
+#### 8. Concept: The Power of mTLS (Mutual TLS)
+
+Why do we care so much about mTLS in a mesh? It's the difference between "Trusting the location" and "Trusting the ID."
+
+##### A. The Core Difference: Who Proves Their Identity?
+
+*   **Regular TLS (One-Way)**: The Client verifies the Server.
+    *   *Analogy*: You walk into a bank. The bank shows its license. You trust it's the bank, but they don't know who *you* are yet.
+*   **Mutual TLS (Two-Way)**: **Both** parties verify each other before sending data.
+    *   *Analogy*: You enter a high-security vault. You check the vault's credentials, and the vault scans your retina. If either fails, the door stays shut.
+
+| Feature | Regular TLS (One-Way) | Mutual TLS (mTLS) |
+| :--- | :--- | :--- |
+| **Server Identity** | Verified by Client. | Verified by Client. |
+| **Client Identity** | Not verified at L4. | **Verified by Server.** |
+| **Certificate Exchange** | Server sends Cert. | **Both** send Certs. |
+| **Zero-Trust Role** | Weak (Identity is unknown). | **Strong** (Identity is cryptographically proven). |
+
+##### B. The mTLS Handshake (The "Extra Step")
+The mTLS handshake adds a critical challenge-response to the standard flow:
+
+1.  **Client Hello**: Client initiates connection.
+2.  **Server Hello + Certificate**: Server proves who it is.
+3.  **Certificate Request (The Change)**: The server says, *"I won't talk to you unless you show me YOUR certificate too."*
+4.  **Client Certificate**: The client sends its own certificate.
+5.  **Digital Signature**: The client signs a piece of data with its Private Key to prove ownership.
+6.  **Server Verification**: The server checks the client's cert against the Mesh CA (Istiod).
+
+##### C. Why use it? (The "SRE" Perspective)
+In a Kubernetes cluster, if an attacker compromises a Pod, they typically try to scan the network.
+
+*   **Without mTLS**: The attacker scans `database-service:5432`. The DB sees a TCP connection and waits for a password.
+*   **With mTLS**: The DB proxy (Ztunnel) immediately asks for a certificate. The attacker's compromised pod **does not have a valid certificate** for the DB service. The connection is dropped *instantly* before it even touches the application.
+
+##### D. How Mesh Makes it "Transparent"
+The biggest pain of mTLS is rotating thousands of certificates.
+*   **The CA (The Brain)**: `istiod` acts as the Certificate Authority.
+*   **Auto-Rotation**: It issues short-lived certs (e.g., 24 hours) to every pod and rotates them silently.
+*   **The Proxy (The Bouncer)**: The Ztunnel intercepts the traffic. Your app (Python/Go) talks plaintext `http://`, but the Ztunnel "upgrades" it to `mTLS` on the wire.
