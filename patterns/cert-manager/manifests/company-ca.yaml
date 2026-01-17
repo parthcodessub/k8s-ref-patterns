@@ -1,0 +1,57 @@
+# ==============================================================================
+# 1. The Bootstrap Issuer
+# ==============================================================================
+# This is a "Self-Signed" Issuer. It has one job: to sign the very first Root CA certificate.
+# In a real enterprise, this wouldn't exist here; your Root CA would be offline or in Vault.
+# For this lab, we need to create trust from thin air.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned-root-issuer
+  namespace: cert-manager
+spec:
+  selfSigned: {}
+---
+# ==============================================================================
+# 2. The Corporate Root CA
+# ==============================================================================
+# This is the actual "Root Certificate".
+# Cert-manager acts as the client:
+# 1. It generates a private key.
+# 2. It creates a CSR for "corporate-root-ca".
+# 3. It sends the CSR to the 'selfsigned-root-issuer' above.
+# 4. It stores the resulting signed Certificate + Key in the secret 'corporate-root-ca-secret'.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: corporate-root-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: corporate-root-ca
+  secretName: corporate-root-ca-secret
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-root-issuer
+    kind: Issuer
+    group: cert-manager.io
+---
+# ==============================================================================
+# 3. The Mesh Intermediate Issuer
+# ==============================================================================
+# This is the Issuer that distinct applications (like Istio) will actually use.
+# It acts as a "CA Issuer", meaning it signs certs using the key stored in 'corporate-root-ca-secret'
+# (which was generated in step 2).
+#
+# Flow:
+# Istio CSR -> mesh-ca-issuer -> Signs with 'corporate-root-ca-secret' -> Signed Cert
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: mesh-ca-issuer
+  namespace: cert-manager
+spec:
+  ca:
+    secretName: corporate-root-ca-secret

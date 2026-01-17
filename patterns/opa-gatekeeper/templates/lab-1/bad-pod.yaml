@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unlabeled-pod
+  # MISSING LABELS:
+  # This pod has no 'owner' or 'cost-center' labels.
+  # It will be REJECTED by Gatekeeper because of the 'ns-must-have-owner' constraint.
+spec:
+  containers:
+  - name: nginx
+    image: nginx

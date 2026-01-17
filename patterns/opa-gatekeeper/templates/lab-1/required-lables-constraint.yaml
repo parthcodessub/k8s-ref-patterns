@@ -1,0 +1,43 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequiredlabels
+  annotations:
+    description: "Requires specific labels to be present on resources."
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequiredLabels
+      validation:
+        # Schema for the parameters that can be passed when instantiating this policy
+        openAPIV3Schema:
+          type: object
+          properties:
+            labels:
+              type: array
+              items: { type: string }
+              description: "A list of labels that must be present on the object."
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequiredlabels
+
+        # 'violation' is the entry point. if this rule evaluates to true, the request is rejected.
+        violation[{"msg": msg}] {
+          # 1. Get all labels currently on the object being reviewed (input.review.object)
+          # We use a set comprehension {x | ...} to create a set for easy math.
+          provided := {label | input.review.object.metadata.labels[label]}
+          
+          # 2. Get the list of labels strictly required by the 'Constraint' parameters
+          required := {label | label := input.parameters.labels[_]}
+          
+          # 3. Calculate the difference: required set minus provided set
+          missing := required - provided
+          
+          # 4. If the missing set is not empty, trigger a violation
+          count(missing) > 0
+          
+          # 5. Return a user-friendly message listing exactly which labels are missing
+          msg := sprintf("You must provide these labels: %v", [missing])
+        }

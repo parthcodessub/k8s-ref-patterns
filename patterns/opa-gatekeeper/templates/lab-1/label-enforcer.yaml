@@ -1,0 +1,23 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredLabels
+metadata:
+  name: ns-must-have-owner
+spec:
+  # 1. Enforcement Action:
+  # - 'deny': Block the request (Fail-Closed style logic for this specific rule)
+  # - 'dryrun': Allow the request but log the violation (Good for testing new policies)
+  enforcementAction: deny
+  
+  # 2. Match Criteria: Define WHERE this policy applies
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    # Exclude system namespaces (important when targeting Pods!)
+    excludedNamespaces:
+      - kube-system
+      - gatekeeper-system
+
+  # 3. Parameters: These are passed to the Rego logic as 'input.parameters'
+  parameters:
+    labels: ["owner", "cost-center"]
