@@ -165,6 +165,12 @@ Before enforcing a policy that might break 50% of your deployments, use the `enf
 
 Let's walk through a real-world scenario: **Ensuring every production pod has an Owner.**
 
+> [!NOTE]
+> If you are targeting the remote `k3d` cluster set up over Tailscale (as described in [antigravity.md](file:///Users/parthpatel/Documents/resources/personal/github/k8s-ref-patterns/patterns/antigravity.md)), make sure your `KUBECONFIG` is exported in your current terminal session before running `helm` or `kubectl` commands:
+> ```bash
+> export KUBECONFIG=~/.kube/remote-k8s.yaml
+> ```
+
 ### Step 1: Install OPA Gatekeeper (Helm)
 As a Lead/SRE, you should manage system components via Helm.
 
@@ -200,19 +206,19 @@ Gatekeeper uses a two-step **"Blueprint and Enforcer"** pattern.
 **1. Apply the Blueprint (ConstraintTemplate)**
 This teaches Kubernetes *how* to check for labels.
 ```bash
-kubectl apply -f templates/required-lables-constraint.yaml
+kubectl apply -f templates/lab-1/required-lables-constraint.yaml
 ```
 
 **2. Apply the Rule (Constraint)**
 This tells Kubernetes to *actually check* all Pods for the `owner` and `cost-center` labels.
 ```bash
-kubectl apply -f templates/label-enforcer.yaml
+kubectl apply -f templates/lab-1/label-enforcer.yaml
 ```
 
 **3. The "Bad" Request (Expected Failure)**
 Try to apply a Pod that has no labels.
 ```bash
-kubectl apply -f templates/bad-pod.yaml
+kubectl apply -f templates/lab-1/bad-pod.yaml
 ```
 
 **Expected Output**:
@@ -364,53 +370,6 @@ Tune these settings in your Helm values to prevent the Audit pod from crashing:
 | **Timing** | Instant (at request time). | Periodic (e.g., every 5 minutes). |
 | **Content** | Rejections only. | Everything that violates policy. |
 | **Goal** | Preventing **new** "bad" things. | Finding **old** "bad" things (Drift). |
-
----
-
-## 1️⃣3️⃣ Lead Engineer: Interview Gotchas & Troubleshooting
-
-If you are interviewing for a Staff/Principal SRE role, you must know how Gatekeeper can **break the cluster**.
-
-### 💀 Q1: The "Deadlock" Scenario
-**Scenario**: You deploy a Gatekeeper policy that mistakenly blocks **ALL** pods (e.g., `deny[msg] { true }`).
-**Result**:
-1.  Gatekeeper blocks all new Pods.
-2.  The Gatekeeper Pod itself crashes (OOMKill).
-3.  K8s tries to restart Gatekeeper.
-4.  Gatekeeper Admission Webhook intercepts the request to create the *new* Gatekeeper pod.
-5.  The Webhook calls the (dead) Gatekeeper service -> **Timeout/Failure**.
-6.  **Deadlock**: You cannot start Gatekeeper because Gatekeeper is down, and the Webhook configuration says `failurePolicy: Fail`.
-
-**The Fix (Break Glass)**:
-You must delete the `ValidatingWebhookConfiguration` to bypass the check.
-```bash
-kubectl delete validatingwebhookconfiguration gatekeeper-validating-webhook-configuration
-```
-*Lead Answer*: "I would always ensure `namespaceSelector` excludes `kube-system` and `gatekeeper-system` to prevent the bouncer from locking themselves out."
-
-### 🏎️ Q2: Webhook Latency & API Throttling
-**Scenario**: Users report `kubectl apply` is taking 5-10 seconds.
-**Cause**:
-*   Gatekeeper is CPU throttled evaluating complex Rego.
-*   The API Server is waiting for the Webhook to respond.
-**Fix**:
-*   Check `gatekeeper_request_duration_seconds` metric.
-*   Scale up `gatekeeper-controller-manager` replicas (typically 3-5 replicas).
-*   Optimize Rego: Avoid `O(n^2)` loops over large lists.
-
-### 🔍 Q3: Why did OPA miss this resource?
-**Scenario**: You have a policy to block `LoadBalancers`, but a developer just created one.
-**Checklist**:
-1.  **Scope**: Did the Constraint match `Service`? (Common mistake: Matching `Pod` but checking Service fields).
-2.  **Namespace**: Was the namespace excluded in `excludedNamespaces`?
-3.  **Operations**: Did the rule listen for `CREATE` but the user did an `UPDATE`?
-    *   *Fix*: Ensure `match.operations` includes `["CREATE", "UPDATE"]`.
-
----
-
-> **Final Thought for Leaders**:
-> OPA is not just a tool; it is **Governance as Code**. It moves the "No" from a human in a meeting to a machine in the pipeline, allowing your developers to move faster with confidence.
-
 
 ---
 
