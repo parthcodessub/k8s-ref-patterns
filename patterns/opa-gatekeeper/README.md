@@ -497,36 +497,48 @@ This allows you to generate a "Compliance Report" and nag teams to fix their YAM
 
 ---
 
-## 9️⃣ Enterprise Use Cases Deep Dive (Business Value)
-
-This section categorizes policies by the **business value** they provide. This is how you explain Gatekeeper to your CTO.
+## 9️⃣ Enterprise Use Cases
 
 ### 🛡️ 1. Security & Compliance (The "Guardrails")
-Focused on **Pod Security Standards (PSS)** and preventing supply-chain attacks.
+Focused on **Pod Security Standards (PSS)**, supply-chain verification, and network isolation.
 
-| Policy | Value Proposition |
-| :--- | :--- |
-| **Trusted Registries** | **Prevents Shadow IT**. Blocks images not from `ecr/jfrog`. Ensures all code is scanned. |
-| **No Privileged Pods** | **Reduces Blast Radius**. Forbids `privileged: true`, `hostPath`. Prevents node takeovers. |
-| **Read-Only Root FS** | **Anti-Malware**. Forces `readOnlyRootFilesystem: true`. Prevents attackers from persisting files. |
+| Policy | Value Proposition | Example / Rego Target |
+| :--- | :--- | :--- |
+| **Trusted Registries** | **Prevents Shadow IT**. Blocks images not from approved internal container registries. | Rejects Pods if any image doesn't start with `harbor.mycorp.internal/` or `gcr.io/mycorp-approved/`. |
+| **No Privileged Pods** | **Reduces Blast Radius**. Forbids `privileged: true` and host namespace sharing. | Rejects Pods if `spec.containers[*].securityContext.privileged == true`. |
+| **Read-Only Root FS** | **Anti-Malware**. Forces `readOnlyRootFilesystem: true`. Prevents attackers from writing malware payloads to disk. | Rejects Pods if any container security context lacks `readOnlyRootFilesystem: true`. |
+| **Ingress TLS Enforcement**| **Data Transit Protection**. Ensures all Ingress resources utilize TLS. | Rejects Ingress creations if `spec.tls` block is omitted or empty. |
+| **Block HostPath mounts** | **Host Compromise Protection**. Prevents containers from mounting directory trees from the underlying node. | Rejects Pods if `spec.volumes[*].hostPath` is defined. |
 
 ### ⚙️ 2. Operational Consistency (The "SRE Dream")
-Ensures predictablity and prevents cluster destabilization.
+Ensures predictability, stability, and prevents cluster destabilization or misconfigurations.
 
-| Policy | Value Proposition |
-| :--- | :--- |
-| **Resource Limits** | **Prevents Noisy Neighbors**. Ensures Autoscaler has accurate data. |
-| **Mandatory Probes** | **Zero-Downtime Updates**. Ensures Liveness/Readiness probes exist. |
-| **Unique Ingress** | **Prevents Hijacking**. Stops Team A from stealing Team B's traffic/hostname. |
+| Policy | Value Proposition | Example / Rego Target |
+| :--- | :--- | :--- |
+| **Resource Limits** | **Prevents Noisy Neighbors**. Ensures CPU/Memory limits are set to allow stable node scheduling. | Rejects Pods without container `.resources.limits.cpu` or `.resources.limits.memory` configured. |
+| **Mandatory Probes** | **Zero-Downtime Updates**. Ensures Liveness and Readiness probes exist to avoid black-holing traffic. | Rejects Deployments if `.spec.template.spec.containers[*].readinessProbe` is missing. |
+| **Unique Ingress Hosts** | **Prevents Host Hijacking**. Stops Team A from accidentally claiming Team B's domain name. | Evaluates all existing Ingresses in memory to reject any new Ingress sharing a duplicate `.spec.rules[*].host`. |
+| **Forbidden Labels/Keys** | **Label Cleanliness**. Prevents developers from using system or reserved labels (like `istio-injection`). | Rejects resources if metadata labels contain forbidden prefixes like `system.kubernetes.io/`. |
 
 ### 💰 3. Cost Management & FinOps
-Often the primary driver for adoption in large orgs.
+Often the primary driver for adoption in large-scale multi-tenant enterprise clusters.
 
-| Policy | Value Proposition |
-| :--- | :--- |
-| **Label Mandates** | **Billing Visibility**. Enforces `cost-center` for show-back/charge-back. |
-| **No LoadBalancers** | **Cloud Cost Control**. Forbids expensive LB types in `dev` namespaces. |
-| **Namespace Quotas** | **Budget Caps**. Hard limits on Pod counts per team. |
+| Policy | Value Proposition | Example / Rego Target |
+| :--- | :--- | :--- |
+| **Label Mandates** | **Billing Visibility**. Enforces `cost-center` and `owner` labels to enable cloud bill charge-backs. | Rejects resources if `metadata.labels["cost-center"]` or `metadata.labels["owner"]` is missing. |
+| **No LoadBalancers** | **Cloud Cost Control**. Prevents developers from spinning up expensive cloud LoadBalancers in dev/staging. | Rejects Services with `.spec.type == LoadBalancer` in namespaces outside production. |
+| **Namespace Quotas** | **Resource Budget Caps**. Caps the maximum resource consumption (e.g., max memory requests) per team. | Evaluates incoming pods and rejects them if they exceed the cumulative namespace quota limit. |
+
+### 🤖 4. MLOps & Data Science Governance
+As enterprises scale machine learning platforms (Kubeflow, MLflow, Triton, Ray) on Kubernetes, governing GPU resources, model security, and data access becomes critical.
+
+| Policy | Value Proposition | Example / Rego Target |
+| :--- | :--- | :--- |
+| **GPU Request Limits** | **Resource Fair Sharing**. Prevents a data scientist from monopolizing expensive GPU nodes for small test jobs. | Rejects Pods requesting `nvidia.com/gpu` greater than a specified limit (e.g., 2 GPUs) in dev namespaces. |
+| **Approved Model Sources** | **Model Integrity & Security**. Ensures ML pipelines only pull model weights from approved Hugging Face mirrors or internal MLflow model registries. | Rejects Pods containing environment variables or command arguments referencing unapproved external model host URLs. |
+| **NFS/Data Share Access** | **PII & Data Protection**. Restricts training pods from mounting sensitive shared volumes or NFS drives containing raw production data. | Rejects Pods mounting volume `raw-financial-data` unless the pod is in the specific authorized `sec-nlp` namespace. |
+| **Notebook Lifespans (TTL)** | **Inactivity Cost Reduction**. Ensures interactive Jupyter/VSCode notebooks are configured with automatic shutdown or time-to-live. | Rejects Jupyter notebook CRs if they lack specific TTL labels (`notebook-ttl-hours`). |
+| **Inference Server Probes**| **ML Inference Availability**. Ensures model serving pods (like Triton or TorchServe) have specific health check endpoints configured. | Rejects Triton deployments if the readiness probe does not query `/v2/health/ready` or `/v2/models/{model_name}/ready`. |
 
 ---
 
