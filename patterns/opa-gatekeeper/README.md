@@ -159,6 +159,148 @@ When configured via `--authorization-mode=Webhook`, the API Server queries an ex
 
 ---
 
+### 🔄 Admission Webhook Lifecycle: Registration, Ordering, and In-Memory Execution
+
+Understanding exactly *where* and *how* webhooks execute in the Kubernetes lifecycle is crucial for cluster reliability and SREs.
+
+#### 1. In-Memory Lifecycle: Why It Is Safe
+* **In-Memory Go Objects**: When the API Server receives an API request, the payload is deserialized into an in-memory Go struct. Webhooks are evaluated **only on this in-memory object**.
+* **Pre-etcd Isolation**: At this stage, the resource has **not** been written to `etcd` (the cluster database).
+* **Net-Rejection Guarantee**: If any validation webhook denies the request, the API Server instantly terminates the transaction, discards the in-memory object, and returns an error response to the client. The resource is never created.
+* **Write to Database**: Only after **all** admission phases succeed does the API Server serialize the finalized object and persist it to `etcd`, committing it to the cluster state.
+
+#### 2. How Webhooks are Registered with the API Server
+The API Server doesn't hardcode webhook locations. Instead, developers register webhooks dynamically using two cluster-scoped Kubernetes resources:
+1. `MutatingWebhookConfiguration`
+2. `ValidatingWebhookConfiguration`
+
+##### Registration Example:
+Here is a snippet showing how OPA Gatekeeper registers its validating webhook to intercept Pod creation and update requests:
+
+```yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: gatekeeper-validating-webhook-configuration
+webhooks:
+  - name: validation.gatekeeper.sh
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+        scope: "Namespaced"
+    clientConfig:
+      # This tells the API Server where to forward the admission request payload
+      service:
+        namespace: "gatekeeper-system"
+        name: "gatekeeper-webhook-service"
+        path: "/v1/admit"
+      caBundle: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0t..." # Base64 PEM bundle for TLS
+    admissionReviewVersions: ["v1", "v1beta1"]
+    sideEffects: None
+    timeoutSeconds: 3
+    failurePolicy: Ignore # or 'Fail' (Closed vs Open)
+```
+
+The key fields are:
+* `.webhooks[*].clientConfig`: Tells the API Server the service name, namespace, and HTTP endpoint path (`/v1/admit`) where it must `POST` the serialized `AdmissionReview` JSON payload.
+* `.webhooks[*].rules`: Instructs the API Server which API groups, versions, resources, and verbs (e.g. `CREATE`, `UPDATE`) should trigger this hook.
+* `.webhooks[*].failurePolicy`: Determines if the request is allowed (`Ignore` / Fail-Open) or blocked (`Fail` / Fail-Closed) if the webhook times out or crashes.
+
+#### 3. Execution Ordering and Multiple Webhooks
+A Kubernetes cluster can have dozens of webhooks registered at the same time (e.g., Istio mutating sidecar injection, cert-manager validation, custom security scanners).
+
+##### A. Validating Webhooks: Parallel and Fail-Fast
+* **Parallel Execution**: Since validation is read-only, the API Server invokes all matching validating webhooks in parallel to minimize latency.
+* **Failure Handling**: The API Server evaluates all validation webhooks. If *any* validator denies the request, the overall request is rejected. The API Server will aggregate all validation errors returned from the webhooks and present them to the user.
+
+##### B. Mutating Webhooks: Sequential Ordering
+Since mutating webhooks modify the object payload, they cannot run in parallel (one hook's mutations might change the schema fields that another hook needs to inspect).
+* **Sequential Order**: The API Server runs mutating webhooks sequentially.
+* **Ordering Mechanics**: 
+  1. The API Server lists all matching `MutatingWebhookConfiguration` objects, sorting them **alphabetically by name**.
+  2. Within each configuration, it executes the webhooks sequentially in the order they are listed in the `webhooks` array.
+
+##### C. Resolving Mutating Conflicts: Re-invocation Policy
+If Webhook A runs first and sets a default value, but then Webhook B runs and changes that value, how do we prevent conflicts or out-of-order errors?
+* **Re-invocation (`reinvocationPolicy: IfNeeded`)**: If a mutating webhook is marked with `reinvocationPolicy: IfNeeded`, and a *subsequent* webhook in the sequence modifies the object, the API Server will **re-invoke** the earlier webhook to give it a chance to adjust its modifications based on the new state.
+* **Loop Prevention**: The API Server will re-evaluate the chain of mutating webhooks up to **2 times**. If the object continues to mutate after the second re-invocation (indicating a cycle/infinite loop), the API Server will abort the request and return an admission error.
+
+---
+
+### 🔄 From Database Record to Running Container: etcd Persistence and the Control Loop
+
+A common point of confusion for SREs and Platform Engineers is: **"If the API Server writes a Pod to etcd, who actually runs it? Does the API Server start the container?"**
+
+The short answer is: **No. The API Server is just a stateless frontend database gatekeeper. It does not run or create containers.**
+
+Here is the exact lifecycle of how a record in `etcd` is realized into actual running hardware, orchestrated by the **Control Loop (Reconciliation)**:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant API as API Server
+    participant DB as etcd
+    participant Ctrl as Kube Controller Manager<br/>(Deployment/RS Controllers)
+    participant Sched as Kube Scheduler
+    participant Kubelet as Worker Node Kubelet
+
+    User->>API: kubectl apply -f deployment.yaml
+    Note over API: (Mutating/Validating Webhooks Pass)
+    API->>DB: 1. Persists "Deployment" record to database
+    API-->>User: Deployment created (Success response)
+
+    loop List-Watch Loop
+        Ctrl->>API: 2. Watches for new/updated Deployments
+    end
+    Ctrl->>API: 3. Calculates actual vs desired replica state.<br/>Submits "ReplicaSet" and "Pod" creation requests.
+    API->>DB: 4. Persists Pod definitions (Pod.spec.nodeName is empty)
+
+    loop List-Watch Loop
+        Sched->>API: 5. Watches for unscheduled Pods
+    end
+    Note over Sched: 6. Filters and Scores nodes.<br/>Decides Node: worker-node-1
+    Sched->>API: 7. Submits Pod "Binding" request (sets spec.nodeName)
+    API->>DB: 8. Persists updated Pod record
+
+    loop List-Watch Loop
+        Kubelet->>API: 9. Watches for Pods assigned to "worker-node-1"
+    end
+    Note over Kubelet: 10. Talks to Container Runtime (CRI)<br/>to pull image and start containers
+    Kubelet->>API: 11. Reports Pod Status (Running, IPs)
+    API->>DB: 12. Persists updated Pod status
+```
+
+#### 1. What does "Persisting to etcd" mean?
+* **`etcd` is a Key-Value Store**: It is Kubernetes' single source of truth. When the API Server persists a resource, it simply writes a JSON/Protobuf serialized document representing the **Desired State** under a specific key (e.g., `/registry/pods/default/nginx`).
+* **It is just a record**: Writing a Pod to `etcd` does not make it run. At this point, the Pod is just a text/binary record in a database.
+
+#### 2. How are resources realized? (The Control Loop / Reconciliation)
+Kubernetes relies on a decentralized architecture governed by **Controllers**. A Controller is an active reconciliation process that constantly runs a loop:
+
+$$\text{Reconciliation Loop: } \text{Actual State} \longrightarrow \text{Compare} \longleftarrow \text{Desired State (etcd)} \longrightarrow \text{Action (Drive to Match)}$$
+
+1. **Watch (List-Watch)**: Controllers open long-lived HTTP/2 streams (Websockets or long-polling watches) to the API Server. They are instantly notified of any changes (Create, Update, Delete) to the resources they care about in `etcd`.
+2. **Kube-Controller-Manager**:
+   * Contains controllers for high-level resources (Deployments, ReplicaSets, Services, Namespaces).
+   * **The Deployment Controller** watches for a new `Deployment` record, realizes that a `ReplicaSet` doesn't exist yet, and requests the API Server to write a `ReplicaSet` record to `etcd`.
+   * **The ReplicaSet Controller** watches for the new `ReplicaSet` record, realizes that Pods don't exist yet, and requests the API Server to write `Pod` records to `etcd`.
+3. **Kube-Scheduler (Realizing Placement)**:
+   * When Pods are first written to `etcd`, their `spec.nodeName` field is empty. They are "Unscheduled."
+   * The **Scheduler** watches the API Server specifically for Pods where `nodeName` is empty.
+   * It runs placement algorithms, selects the best node (e.g., `worker-node-1`), and writes a **Binding** request back to the API Server, which updates the Pod record in `etcd` with `spec.nodeName: worker-node-1`.
+4. **Kubelet (Realizing Container Execution)**:
+   * The **Kubelet** is an agent running on **every worker node**.
+   * The Kubelet on `worker-node-1` watches the API Server for Pods assigned specifically to `worker-node-1`.
+   * When it detects the assignment, it contacts the node's local **Container Runtime Interface (CRI)** (like `containerd` or `cri-o`) via gRPC to pull the container image, set up network namespaces (via CNI), mount volumes (via CSI), and boot the containers.
+   * The Kubelet then posts a status update back to the API Server (e.g., `status.phase: Running`), which is saved to `etcd`.
+
+This decoupling of concerns is why Kubernetes is highly resilient: if the Scheduler crashes, running containers keep running. If a worker node dies, the Deployment controller detects the drop in actual running pods vs. desired replicas and schedules replacements elsewhere.
+
+---
+
 ## 2️⃣ OPA vs. Gatekeeper: What's the difference?
 
 | Component | Description | Use Case |
