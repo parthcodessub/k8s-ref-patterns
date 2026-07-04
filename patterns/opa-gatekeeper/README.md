@@ -55,16 +55,107 @@ sequenceDiagram
     end
 ```
 
-### The Two Types of Webhooks
+### Admission Webhooks Deep Dive
 
-| Feature | Mutating Webhook | Validating Webhook (OPA) |
+In Kubernetes, admission webhooks are HTTP callbacks that intercept API requests prior to persistence in `etcd`, but after authentication and authorization. There are two primary types of admission webhooks:
+
+| Feature | Mutating Admission Webhook | Validating Admission Webhook (OPA) |
 | :--- | :--- | :--- |
-| **Timing** | Runs **First**. | Runs **Last** (after mutation). |
-| **Capability** | Can **Modify** content (e.g., inject sidecar). | **Read-Only**. Can only Approve or Deny. |
-| **Execution** | Serial (One after another). | Parallel (Fast). |
-| **Logic** | "If missing sidecar, add it." | "If missing sidecar, REJECT it." |
+| **Timing** | Runs **First** (pre-schema validation). | Runs **Last** (post-mutation & schema validation). |
+| **Capability** | Can **Modify** content (e.g., inject sidecars, defaults). | **Read-Only**. Can only Approve or Deny. |
+| **Execution** | Serial (Order matters, as mutations can chain). | Parallel (Evaluated concurrently for speed). |
+| **Common Use Cases** | Injecting sidecars, default labels, pull secrets. | Enforcing resource limits, allowed registries, labels. |
+| **Logic Pattern** | *"If field X is missing, set X to default_value."* | *"If field X is invalid/missing, REJECT the request."* |
 
-> **SRE Insight**: OPA runs *after* mutation implies that OPA validates the **final state** of the object. If Istio injects a sidecar that runs as `root`, and your OPA policy forbids `root`, OPA will catch it even if the user's original YAML didn't mention the sidecar.
+> [!NOTE]
+> **SRE Insight (Final State Validation)**: Because OPA runs *after* the mutation phase, it validates the **final state** of the object. For example, if a developer submits a Pod without a sidecar, but Istio's mutating webhook injects an Envoy sidecar configured to run as `root`, Gatekeeper's validating webhook can catch and reject the deployment if your policy forbids root containers—even though the developer's original manifest looked clean.
+
+#### 1️⃣ Mutating Webhook Example (Gatekeeper Mutation)
+Gatekeeper allows defining mutating policies natively using mutation CRDs like `Assign`, `AssignMetadata`, or `ModifySet`. 
+
+The following example automatically assigns the `imagePullPolicy` to `Always` for all containers in the `production` namespace if it is not explicitly configured:
+
+```yaml
+apiVersion: mutations.gatekeeper.sh/v1alpha1
+kind: Assign
+metadata:
+  name: force-image-pull-policy
+spec:
+  applyTo:
+  - groups: [""]
+    kinds: ["Pod"]
+    versions: ["v1"]
+  match:
+    scope: Namespaced
+    namespaces: ["production"]
+  location: "spec.containers[name:*].imagePullPolicy"
+  parameters:
+    pathTests:
+    - subPath: "spec.containers[name:*].imagePullPolicy"
+      condition: MustNotExist
+    assign:
+      value: Always
+```
+
+#### 2️⃣ Validating Webhook Example (Gatekeeper Validation)
+Validating webhooks inspect the finalized resource payload and issue a binary accept/deny decision. Gatekeeper defines these using `ConstraintTemplates` (Rego logic) and `Constraints` (configuration scope).
+
+The following example shows a `Constraint` that rejects any Pod if it does not define container memory limits:
+
+```yaml
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sContainerLimits
+metadata:
+  name: container-must-have-limits
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+      - gatekeeper-system
+  parameters:
+    cpuLimit: "1000m"
+    memoryLimit: "2Gi"
+```
+
+---
+
+### 🌐 Are there any other Kubernetes Webhooks?
+
+Yes! While mutating and validating admission webhooks are the most common, the Kubernetes API Server utilizes three other distinct types of webhooks for extensibility:
+
+#### A. CRD Conversion Webhooks
+When Custom Resource Definitions (CRDs) support multiple active API versions (e.g., transitioning from `v1alpha1` to `v1`), the API Server uses a **Conversion Webhook** to translate resources stored in `etcd` from one schema version to another dynamically.
+
+```yaml
+# Inside the CustomResourceDefinition (CRD) spec
+spec:
+  group: mycorp.com
+  versions:
+    - name: v1beta1
+      served: true
+      storage: false
+    - name: v1
+      served: true
+      storage: true # Stored in etcd as v1
+  conversion:
+    strategy: Webhook
+    webhook:
+      conversionReviewVersions: ["v1", "v1beta1"]
+      clientConfig:
+        service:
+          namespace: "custom-system"
+          name: "crd-converter-svc"
+          path: "/convert"
+```
+
+#### B. Webhook Token Authentication
+If you configure `--authentication-token-webhook-config-file`, the API Server will delegate bearer token verification to an external service. The API Server posts a `TokenReview` JSON payload to the webhook containing the token, and the webhook returns the authenticated user's identity, group membership, and extra fields.
+
+#### C. Webhook Authorization
+When configured via `--authorization-mode=Webhook`, the API Server queries an external authorization service to determine permissions. The API Server sends a `SubjectAccessReview` payload containing details of the action (User, Verb, Namespace, Resource) and the external webhook replies with a simple `allowed: true` or `false`.
 
 ---
 
