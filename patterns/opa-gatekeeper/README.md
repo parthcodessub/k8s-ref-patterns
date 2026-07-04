@@ -291,11 +291,29 @@ $$\text{Reconciliation Loop: } \text{Actual State} \longrightarrow \text{Compare
    * When Pods are first written to `etcd`, their `spec.nodeName` field is empty. They are "Unscheduled."
    * The **Scheduler** watches the API Server specifically for Pods where `nodeName` is empty.
    * It runs placement algorithms, selects the best node (e.g., `worker-node-1`), and writes a **Binding** request back to the API Server, which updates the Pod record in `etcd` with `spec.nodeName: worker-node-1`.
+   * > **⚠️ Clarification (No Direct Push)**: The Scheduler does **NOT** contact the Kubelet or the worker node directly. It doesn't push a request to them. The Scheduler's *only* output is updating the `spec.nodeName` property of the Pod in `etcd` via the API Server.
 4. **Kubelet (Realizing Container Execution)**:
    * The **Kubelet** is an agent running on **every worker node**.
-   * The Kubelet on `worker-node-1` watches the API Server for Pods assigned specifically to `worker-node-1`.
-   * When it detects the assignment, it contacts the node's local **Container Runtime Interface (CRI)** (like `containerd` or `cri-o`) via gRPC to pull the container image, set up network namespaces (via CNI), mount volumes (via CSI), and boot the containers.
-   * The Kubelet then posts a status update back to the API Server (e.g., `status.phase: Running`), which is saved to `etcd`.
+   * Kubelet on `worker-node-1` does not wait for a push. Instead, it constantly watches the API Server for Pods assigned specifically to its node name (`worker-node-1`).
+   * When Kubelet detects a new Pod assigned to its node, it contacts the local **Container Runtime Interface (CRI)** (like `containerd` or `cri-o`) on that same node via a local Unix socket gRPC call. The CRI pulls the container image and spawns the container. Kubelet then reports the Pod status back to the API Server.
+   * > **⚠️ Clarification (Where does `kubectl` fit?)**: `kubectl` is merely a CLI utility running on your local Macbook (or workstation). It is a REST client that communicates *exclusively* with the API Server's HTTP endpoints. It has **no** access to the worker nodes, CRI, or `containerd`. Once `kubectl` submits the YAML and receives a success response from the API Server, its job is completely finished.
+
+---
+
+### 📦 Who Processes Custom Resources (CRDs)?
+
+While the core Kubernetes components (`kube-controller-manager` and `kube-scheduler`) handle standard object types like Pods, Deployments, and Services, they have **no idea** how to process custom resources (like OPA Gatekeeper's `ConstraintTemplate` or `Assign`).
+
+Instead, CRDs are realized by **Custom Controllers** (commonly called **Operators**):
+
+* **API Server Storage**: The API Server handles storing your CRD definitions and instances in `etcd` out-of-the-box (it acts as a generic JSON registry for custom types).
+* **The Custom Controller/Operator**: Developers write a custom application (usually in Go, Python, or Rust) that runs inside a standard Pod in the cluster. This application opens a List-Watch stream targeting the specific CRD API group (e.g., `templates.gatekeeper.sh` or `constraints.gatekeeper.sh`).
+* **OPA Gatekeeper example**:
+  * When you run `helm install gatekeeper`, it deploys a Pod named `gatekeeper-controller-manager`.
+  * This Pod runs a custom controller that watches for new `ConstraintTemplate` and `Constraint` resources.
+  * When it detects a new template, the controller reads the Rego code, compiles it into memory, and registers the webhook rules dynamically so that the validating webhook knows to check incoming resources against this new policy.
+
+---
 
 This decoupling of concerns is why Kubernetes is highly resilient: if the Scheduler crashes, running containers keep running. If a worker node dies, the Deployment controller detects the drop in actual running pods vs. desired replicas and schedules replacements elsewhere.
 
